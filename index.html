@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="km">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>កម្មវិធីបង្កើត Poster ថ្លែងអំណរគុណជាកញ្ចប់ (Bulk Poster Generator)</title>
+  
+  <!-- Google Fonts for Khmer Typography & UI -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Battambang:wght@400;700&family=Bayon&family=Content:wght@400;700&family=Dangrek&family=Hanuman:wght@400;700&family=Inter:wght@300;400;500;600;700&family=Kantumruy+Pro:wght@400;600;700&family=Koh+Santepheap:wght@400;700&family=Moul&family=Moulpali&family=Preahvihear&family=Siemreap&display=swap" rel="stylesheet">
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- SheetJS (XLSX Parser) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <!-- JSZip & FileSaver for Bulk ZIP Download -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Navigation Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="logo-icon"><i data-lucide="layers"></i></div>
+        <div class="brand-text">
+          <h1>Poster Bulk Generator</h1>
+          <span>កម្មវិធីបង្កើត Poster ថ្លែងអំណរគុណ/បុណ្យ ស្វ័យប្រវត្តិ</span>
+        </div>
+      </div>
+
+      <!-- Action Buttons Header -->
+      <div class="header-actions">
+        <label class="btn btn-secondary">
+          <i data-lucide="image"></i>
+          <span>1. Upload Template Background</span>
+          <input type="file" id="templateUploadInput" accept="image/*" style="display: none;" />
+        </label>
+
+        <label class="btn btn-secondary" id="excelUploadBtn">
+          <i data-lucide="file-spreadsheet"></i>
+          <span>2. Upload File Excel (.xlsx/.csv)</span>
+          <input type="file" id="excelUploadInput" accept=".xlsx, .xls, .csv" style="display: none;" />
+        </label>
+
+        <button class="btn btn-secondary" id="btnLoadSample">
+          <i data-lucide="sparkles"></i>
+          <span>ពុម្ពគំរូ (Sample)</span>
+        </button>
+
+        <button class="btn btn-primary" id="btnBatchExport">
+          <i data-lucide="download-cloud"></i>
+          <span>3. Export Posters ទាំងអស់ (ZIP)</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace Grid -->
+    <main class="app-body">
+      <!-- Left Sidebar: Tools, Elements & Layers -->
+      <aside class="sidebar-left">
+        <div class="sidebar-section">
+          <h3><i data-lucide="plus-circle"></i> បន្ថែម Element លើ Canvas</h3>
+          <div class="tool-buttons">
+            <button class="btn-tool" id="btnAddText">
+              <i data-lucide="type"></i>
+              <span>+ បន្ថែម Text Box</span>
+            </button>
+            <button class="btn-tool" id="btnAddPhotoFrame">
+              <i data-lucide="image-plus"></i>
+              <span>+ បន្ថែម Photo Frame (រូបថត)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Excel Merge Fields Dropdown Bar -->
+        <div class="sidebar-section" id="mergeFieldsSection">
+          <div class="section-title-badge">
+            <h3><i data-lucide="variable"></i> Insert Merge Fields</h3>
+            <span class="badge" id="excelStatusBadge">មិនទាន់ Upload Excel</span>
+          </div>
+
+          <div id="mergeFieldsContainer" class="merge-fields-list">
+            <p class="empty-hint">សូម Upload ឯកសារ Excel ដើម្បីរៀបចំ Merge Fields (ឧទាហរណ៍ ឈ្មោះ, លេខឆ្នោត...)</p>
+          </div>
+        </div>
+
+        <!-- Layers List -->
+        <div class="sidebar-section">
+          <h3><i data-lucide="list-tree"></i> បញ្ជី Layers (Elements)</h3>
+          <div id="layersList" class="layers-list">
+            <!-- Dynamic Layers rendered via JS -->
+          </div>
+        </div>
+      </aside>
+
+      <!-- Center Workspace: Canvas Editor & Preview Controls -->
+      <section class="workspace-center">
+        <!-- Record Navigation & Preview Toolbar -->
+        <div class="preview-toolbar">
+          <div class="record-selector">
+            <button class="btn-icon" id="btnPrevRecord" title="Record មុន"><i data-lucide="chevron-left"></i></button>
+            <div class="record-info">
+              <span>រៀបចំទិន្នន័យ Record:</span>
+              <select id="recordDropdown" class="select-input">
+                <option value="template">-- Mode: រៀបចំ Template (ទម្រង់ដើម) --</option>
+              </select>
+            </div>
+            <button class="btn-icon" id="btnNextRecord" title="Record បន្ទាប់"><i data-lucide="chevron-right"></i></button>
+          </div>
+
+          <div class="view-controls">
+            <button class="btn-pill active" id="modeTemplateBtn"><i data-lucide="edit-3"></i> Edit Template</button>
+            <button class="btn-pill" id="modePreviewBtn"><i data-lucide="eye"></i> Live Preview Mode</button>
+            <button class="btn-icon" id="btnZoomOut" title="Zoom Out"><i data-lucide="zoom-out"></i></button>
+            <span id="zoomLevel">100%</span>
+            <button class="btn-icon" id="btnZoomIn" title="Zoom In"><i data-lucide="zoom-in"></i></button>
+            <button class="btn-icon" id="btnResetZoom" title="Fit Screen"><i data-lucide="maximize"></i></button>
+          </div>
+        </div>
+
+        <!-- Canvas Container -->
+        <div class="canvas-viewport" id="canvasViewport">
+          <div class="canvas-wrapper" id="canvasWrapper">
+            <canvas id="posterCanvas"></canvas>
+            <!-- Overlay DOM Draggable Controls -->
+            <div id="canvasOverlay" class="canvas-overlay"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Sidebar: Selected Element Inspector & Styling -->
+      <aside class="sidebar-right">
+        <div id="inspectorPanel">
+          <div class="sidebar-section">
+            <h3><i data-lucide="sliders"></i> កែប្រែ Element Property</h3>
+            <p id="noSelectionText" class="empty-hint">សូមចុចលើ Text Box ឬ Frame លើ Canvas ដើម្បីកែតម្រូវ</p>
+
+            <div id="elementProperties" class="properties-form hidden">
+              <!-- Content / Text Input -->
+              <div class="form-group" id="textGroup">
+                <label for="propText">អត្ថបទ (ឬ Merge Field)</label>
+                <textarea id="propText" rows="3" class="form-control" placeholder="បញ្ចូលអត្ថបទ ឬ {{ ឈ្មោះ Column }}"></textarea>
+                <small class="help-text">អ្នកអាចចុចលើ Button "Insert Merge Field" នៅខាងឆ្វេងដើម្បីបញ្ចូល dynamic text</small>
+              </div>
+
+              <!-- Khmer & Standard Fonts -->
+              <div class="form-group">
+                <label for="propFontFamily">ពុម្ពអក្សរ (Font Family)</label>
+                <select id="propFontFamily" class="form-control font-select">
+                  <optgroup label="អក្សរខ្មែរ (Khmer Fonts)">
+                    <option value="'Moul', Khmer, serif" style="font-family: 'Moul'">Moul (មូល)</option>
+                    <option value="'Battambang', sans-serif" style="font-family: 'Battambang'">Battambang (បាត់ដំបង)</option>
+                    <option value="'Siemreap', sans-serif" style="font-family: 'Siemreap'">Siemreap (សៀមរាប)</option>
+                    <option value="'Kantumruy Pro', sans-serif" style="font-family: 'Kantumruy Pro'">Kantumruy Pro (កន្តំរុយ)</option>
+                    <option value="'Hanuman', serif" style="font-family: 'Hanuman'">Hanuman (ហនុមាន)</option>
+                    <option value="'Bayon', display" style="font-family: 'Bayon'">Bayon (បាយ័ន)</option>
+                    <option value="'Dangrek', display" style="font-family: 'Dangrek'">Dangrek (ដងរែក)</option>
+                    <option value="'Koh Santepheap', sans-serif" style="font-family: 'Koh Santepheap'">Koh Santepheap (កោះសន្តិភាព)</option>
+                  </optgroup>
+                  <optgroup label="អក្សរអង់គ្លេស/ទូទៅ">
+                    <option value="'Inter', sans-serif">Inter</option>
+                    <option value="Arial, sans-serif">Arial</option>
+                    <option value="'Times New Roman', serif">Times New Roman</option>
+                  </optgroup>
+                </select>
+              </div>
+
+              <!-- Font Size & Align -->
+              <div class="form-row">
+                <div class="form-group col-6">
+                  <label for="propFontSize">ទំហំអក្សរ (px)</label>
+                  <input type="number" id="propFontSize" class="form-control" min="8" max="250" value="32" />
+                </div>
+                <div class="form-group col-6">
+                  <label for="propAlign">តម្រឹម (Align)</label>
+                  <select id="propAlign" class="form-control">
+                    <option value="center">កណ្ដាល (Center)</option>
+                    <option value="left">ឆ្វេង (Left)</option>
+                    <option value="right">ស្តាំ (Right)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Color & Stroke -->
+              <div class="form-row">
+                <div class="form-group col-6">
+                  <label for="propColor">ពណ៌អក្សរ</label>
+                  <div class="color-picker-wrap">
+                    <input type="color" id="propColor" value="#5b360f" />
+                    <input type="text" id="propColorText" value="#5b360f" class="form-control" />
+                  </div>
+                </div>
+                <div class="form-group col-6">
+                  <label for="propStrokeColor">ពណ៌ស៊ុមអក្សរ (Stroke)</label>
+                  <div class="color-picker-wrap">
+                    <input type="color" id="propStrokeColor" value="#ffffff" />
+                    <input type="text" id="propStrokeColorText" value="#ffffff" class="form-control" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group col-6">
+                  <label for="propStrokeWidth">កម្រាស់ស៊ុម (Stroke Width)</label>
+                  <input type="number" id="propStrokeWidth" class="form-control" min="0" max="20" value="0" />
+                </div>
+                <div class="form-group col-6">
+                  <label for="propShadowBlur">ស្រមោល (Shadow Blur)</label>
+                  <input type="number" id="propShadowBlur" class="form-control" min="0" max="40" value="0" />
+                </div>
+              </div>
+
+              <!-- Position Coordinates -->
+              <div class="form-row">
+                <div class="form-group col-6">
+                  <label for="propX">ទីតាំង X (px)</label>
+                  <input type="number" id="propX" class="form-control" />
+                </div>
+                <div class="form-group col-6">
+                  <label for="propY">ទីតាំង Y (px)</label>
+                  <input type="number" id="propY" class="form-control" />
+                </div>
+              </div>
+
+              <!-- Layer Action Controls -->
+              <div class="property-actions">
+                <button class="btn btn-secondary col-6" id="btnBringForward"><i data-lucide="arrow-up"></i> ឡើងលើ</button>
+                <button class="btn btn-secondary col-6" id="btnSendBackward"><i data-lucide="arrow-down"></i> ចុះក្រោម</button>
+                <button class="btn btn-danger col-12" id="btnDeleteElement"><i data-lucide="trash-2"></i> លុប Element នេះ</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Excel Data Table Preview Section -->
+          <div class="sidebar-section">
+            <h3><i data-lucide="table"></i> ទិន្នន័យ Excel លោតក្នុង Poster</h3>
+            <button class="btn btn-secondary col-12" id="btnViewDataModal">
+              <i data-lucide="eye"></i> មើលតារាងទិន្នន័យ Excel ទាំងអស់
+            </button>
+          </div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Excel Data Table Modal -->
+  <div id="dataModal" class="modal-overlay hidden">
+    <div class="modal-card modal-large">
+      <div class="modal-header">
+        <h2><i data-lucide="database"></i> ឯកសារទិន្នន័យ Excel ដែលបាន Upload</h2>
+        <button class="modal-close" id="btnCloseDataModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="excelTableContainer" class="table-responsive">
+          <p class="empty-hint">មិនទាន់មានទិន្នន័យ Excel នៅឡើយទេ</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btnCloseDataModal2">បិទ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Batch Export Progress Modal -->
+  <div id="exportModal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2><i data-lucide="package-check"></i> កំពុង Export និង Pack ជា ZIP File...</h2>
+      </div>
+      <div class="modal-body text-center">
+        <div class="progress-spinner">
+          <i data-lucide="loader-2" class="spin"></i>
+        </div>
+        <p id="exportStatusText">កំពុងរៀបចំ Poster 1 / 100 ...</p>
+        <div class="progress-bar-container">
+          <div id="exportProgressBar" class="progress-bar" style="width: 0%;"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btnCancelExport">បោះបង់</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main JavaScript App -->
+  <script src="app.js"></script>
+  <script>
+    // Initialize Lucide icons
+    lucide.createIcons();
+  </script>
+</body>
+</html>
