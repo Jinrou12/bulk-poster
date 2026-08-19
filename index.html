@@ -106,12 +106,24 @@
           <div class="record-selector">
             <button class="btn-icon" id="btnPrevRecord" title="Record មុន"><i data-lucide="chevron-left"></i></button>
             <div class="record-info">
-              <span>រៀបចំទិន្នន័យ Record:</span>
+              <span>Record:</span>
               <select id="recordDropdown" class="select-input">
                 <option value="template">-- Mode: រៀបចំ Template (ទម្រង់ដើម) --</option>
               </select>
             </div>
             <button class="btn-icon" id="btnNextRecord" title="Record បន្ទាប់"><i data-lucide="chevron-right"></i></button>
+
+            <!-- Filter By Serial Number Count (1 vs Multiple) -->
+            <div class="record-filter-wrap">
+              <i data-lucide="filter" class="filter-icon"></i>
+              <select id="filterTicketType" class="select-input select-filter" title="Filter តាមចំនួនលេខរៀង/ឆ្នោត">
+                <option value="all">🌐 ទាំងអស់ (All)</option>
+                <option value="single">1️⃣ លេខរៀង ១ (Single)</option>
+                <option value="multiple">🔢 លេខរៀងច្រើន (Multiple)</option>
+              </select>
+              <span id="filteredCountBadge" class="badge-filter">0/0</span>
+            </div>
+
             <button class="btn-pill" id="btnGroupDuplicateNames" title="បង្រួមឈ្មោះដែលដូចគ្នាជា Poster តែមួយ (ឧទាហរណ៍៖ លេខ ៦៤ - ៨៨)"><i data-lucide="combine"></i> បង្រួមឈ្មោះដូចគ្នា</button>
           </div>
 
@@ -254,15 +266,29 @@
   <div id="dataModal" class="modal-overlay hidden">
     <div class="modal-card modal-large">
       <div class="modal-header">
-        <h2><i data-lucide="database"></i> ឯកសារទិន្នន័យ Excel ដែលបាន Upload</h2>
+        <h2><i data-lucide="database"></i> ឯកសារទិន្នន័យ Excel ( Filter & Search )</h2>
         <button class="modal-close" id="btnCloseDataModal">&times;</button>
       </div>
       <div class="modal-body">
+        <div class="data-modal-toolbar">
+          <div class="filter-tabs">
+            <button class="filter-tab active" data-filter="all">🌐 ទាំងអស់ (<span id="modalCountAll">0</span>)</button>
+            <button class="filter-tab" data-filter="single">1️⃣ លេខរៀង ១ (<span id="modalCountSingle">0</span>)</button>
+            <button class="filter-tab" data-filter="multiple">🔢 លេខរៀងច្រើន (<span id="modalCountMultiple">0</span>)</button>
+          </div>
+          <div class="modal-search-box">
+            <i data-lucide="search"></i>
+            <input type="text" id="modalSearchInput" placeholder="ស្វែងរកឈ្មោះ ឬ លេខឆ្នោត..." />
+          </div>
+        </div>
         <div id="excelTableContainer" class="table-responsive">
           <p class="empty-hint">មិនទាន់មានទិន្នន័យ Excel នៅឡើយទេ</p>
         </div>
       </div>
       <div class="modal-footer">
+        <button class="btn btn-primary" id="btnExportFilteredZip">
+          <i data-lucide="download-cloud"></i> Export Posters តាម Filter នេះ (ZIP)
+        </button>
         <button class="btn btn-secondary" id="btnCloseDataModal2">បិទ</button>
       </div>
     </div>

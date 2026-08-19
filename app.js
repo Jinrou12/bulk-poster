@@ -20,6 +20,10 @@
     mode: 'template',        // 'template' | 'preview'
     currentRecordIndex: 0,
 
+    ticketFilter: 'all',     // 'all' | 'single' | 'multiple'
+    modalTabFilter: 'all',   // 'all' | 'single' | 'multiple'
+    modalSearchQuery: '',
+
     elements: [],            // All canvas elements
     selectedElementId: null,
 
@@ -63,6 +67,8 @@
     btnPrevRecord:        document.getElementById('btnPrevRecord'),
     btnNextRecord:        document.getElementById('btnNextRecord'),
     btnGroupDuplicateNames: document.getElementById('btnGroupDuplicateNames'),
+    filterTicketType:     document.getElementById('filterTicketType'),
+    filteredCountBadge:   document.getElementById('filteredCountBadge'),
     recordDropdown:       document.getElementById('recordDropdown'),
     modeTemplateBtn:      document.getElementById('modeTemplateBtn'),
     modePreviewBtn:       document.getElementById('modePreviewBtn'),
@@ -95,6 +101,11 @@
     btnCloseDataModal:    document.getElementById('btnCloseDataModal'),
     btnCloseDataModal2:   document.getElementById('btnCloseDataModal2'),
     excelTableContainer:  document.getElementById('excelTableContainer'),
+    modalCountAll:        document.getElementById('modalCountAll'),
+    modalCountSingle:     document.getElementById('modalCountSingle'),
+    modalCountMultiple:   document.getElementById('modalCountMultiple'),
+    modalSearchInput:     document.getElementById('modalSearchInput'),
+    btnExportFilteredZip: document.getElementById('btnExportFilteredZip'),
 
     exportModal:          document.getElementById('exportModal'),
     exportStatusText:     document.getElementById('exportStatusText'),
@@ -192,10 +203,54 @@
     dom.btnSendBackward.addEventListener('click',  () => moveLayer(-1));
     dom.btnDeleteElement.addEventListener('click', deleteSelectedElement);
 
-    dom.btnViewDataModal.addEventListener('click',    () => dom.dataModal.classList.remove('hidden'));
+    dom.btnViewDataModal.addEventListener('click',    () => { renderExcelTableModal(); dom.dataModal.classList.remove('hidden'); });
     dom.btnCloseDataModal.addEventListener('click',   () => dom.dataModal.classList.add('hidden'));
     dom.btnCloseDataModal2.addEventListener('click',  () => dom.dataModal.classList.add('hidden'));
     dom.btnCancelExport.addEventListener('click',     () => { state.cancelExport = true; dom.exportModal.classList.add('hidden'); });
+
+    // Filter by Ticket Count Dropdown (1 vs Multiple)
+    if (dom.filterTicketType) {
+      dom.filterTicketType.addEventListener('change', e => {
+        state.ticketFilter = e.target.value;
+        updateRecordDropdown();
+        const filtered = getFilteredRecords(state.ticketFilter);
+        if (filtered.length > 0) {
+          const hasCurrent = filtered.some(f => f.originalIndex === state.currentRecordIndex);
+          if (!hasCurrent) {
+            state.currentRecordIndex = filtered[0].originalIndex;
+          }
+          setMode('preview');
+        } else {
+          renderCanvas();
+        }
+      });
+    }
+
+    // Modal Real-time Search Input
+    if (dom.modalSearchInput) {
+      dom.modalSearchInput.addEventListener('input', e => {
+        state.modalSearchQuery = e.target.value;
+        renderExcelTableModal();
+      });
+    }
+
+    // Modal Export Filtered ZIP
+    if (dom.btnExportFilteredZip) {
+      dom.btnExportFilteredZip.addEventListener('click', () => {
+        dom.dataModal.classList.add('hidden');
+        handleBatchExport(true);
+      });
+    }
+
+    // Modal Filter Tab Buttons
+    document.querySelectorAll('.filter-tab').forEach(tab => {
+      tab.addEventListener('click', e => {
+        document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+        e.currentTarget.classList.add('active');
+        state.modalTabFilter = e.currentTarget.getAttribute('data-filter') || 'all';
+        renderExcelTableModal();
+      });
+    });
 
     // Click on canvas viewport (deselect when clicking empty space)
     dom.canvasViewport.addEventListener('mousedown', e => {
@@ -1011,17 +1066,106 @@
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Record Navigation & Mode
+  // Record Navigation & Filtering (1 Ticket vs Multiple Tickets)
   // ──────────────────────────────────────────────────────────────────────────
+
+  /** Count total ticket numbers in a record row */
+  function getRecordTicketCount(row, headers) {
+    if (!row) return 1;
+    if (row._ticketCount && typeof row._ticketCount === 'number' && row._ticketCount > 0) {
+      return row._ticketCount;
+    }
+
+    const currentHeaders = (headers && headers.length) ? headers : state.excelHeaders;
+    
+    // Make sure nameHeader and ticketHeader don't collide
+    const nameHeader = currentHeaders.find(h => /ឈ្មោះ|name|owner|ម្ចាស់/i.test(h)) || currentHeaders[1] || currentHeaders[0];
+    let ticketHeader = currentHeaders.find(h => h !== nameHeader && /លេខ|ឆ្នោត|ស្លាក|រៀង|no|number|code|id/i.test(h));
+    if (!ticketHeader) {
+      ticketHeader = currentHeaders.find(h => h !== nameHeader) || (currentHeaders[0] !== nameHeader ? currentHeaders[0] : currentHeaders[1]);
+    }
+
+    const val = ticketHeader ? String(row[ticketHeader] ?? '').trim() : '';
+    if (!val) return 1;
+
+    // Convert Khmer digits to latin digits & strip zero-width chars
+    const latin = toLatinDigits(val)
+      .replace(/[\u200B-\u200D\uFEFF\u00AD]/g, '')
+      .replace(/[\s\u00A0\u1680\u2000-\u200A\u3000]+/g, ' ')
+      .trim();
+
+    // Extract all integer numbers in the string
+    const numbers = latin.match(/\d+/g);
+    if (!numbers || numbers.length === 0) return 1;
+
+    // Check if string contains a range indicator (hyphen, dash, 'ដល់', 'to')
+    const hasRangeSymbol = /[\-\u2010-\u2015\u2212]|ដល់|\bto\b/i.test(latin);
+
+    if (hasRangeSymbol && numbers.length >= 2) {
+      const n1 = parseInt(numbers[0], 10);
+      const n2 = parseInt(numbers[numbers.length - 1], 10);
+      if (!isNaN(n1) && !isNaN(n2) && n2 > n1) {
+        return (n2 - n1) + 1;
+      }
+    }
+
+    // Check if string contains multiple individual numbers
+    if (numbers.length > 1) {
+      return numbers.length;
+    }
+
+    return 1;
+  }
+
+  /** Filter records according to active filter type ('all' | 'single' | 'multiple') */
+  function getFilteredRecords(filterType) {
+    const fType = filterType || state.ticketFilter || 'all';
+    const list = [];
+    state.excelRows.forEach((row, originalIndex) => {
+      const count = getRecordTicketCount(row, state.excelHeaders);
+      const isSingle = count === 1;
+      const isMultiple = count > 1;
+
+      if (fType === 'single' && !isSingle) return;
+      if (fType === 'multiple' && !isMultiple) return;
+
+      list.push({
+        row,
+        originalIndex,
+        ticketCount: count,
+        isMultiple
+      });
+    });
+    return list;
+  }
+
   function updateRecordDropdown() {
     dom.recordDropdown.innerHTML = '<option value="template">-- Mode: រៀបចំ Template (ទម្រង់ដើម) --</option>';
-    state.excelRows.forEach((row, i) => {
-      const opt  = document.createElement('option');
-      opt.value  = i;
-      const name = Object.values(row)[0] || `Record #${toKhmerDigits(i + 1)}`;
-      opt.textContent = `Record ${toKhmerDigits(i + 1)}: ${name}`;
+    const filteredList = getFilteredRecords(state.ticketFilter);
+
+    const nameHeader = state.excelHeaders.find(h => /ឈ្មោះ|name|owner|ម្ចាស់/i.test(h)) || state.excelHeaders[1] || state.excelHeaders[0];
+    const ticketHeader = state.excelHeaders.find(h => /លេខ|ឆ្នោត|ស្លាក|រៀង|no|number|code|id/i.test(h)) || state.excelHeaders[0];
+
+    filteredList.forEach((item, i) => {
+      const opt = document.createElement('option');
+      opt.value = item.originalIndex;
+      
+      const nameVal = String(item.row[nameHeader] || Object.values(item.row)[0] || `Record #${item.originalIndex + 1}`);
+      const ticketVal = ticketHeader ? String(item.row[ticketHeader] || '') : '';
+      
+      const typeLabel = item.ticketCount > 1 ? `[🔢 ${toKhmerDigits(item.ticketCount)} លេខ]` : '[1️⃣ 1 លេខ]';
+      opt.textContent = `${toKhmerDigits(i + 1)}. ${nameVal} (${ticketVal || 'គ្មានលេខ'}) ${typeLabel}`;
+      
+      if (item.originalIndex === state.currentRecordIndex) {
+        opt.selected = true;
+      }
       dom.recordDropdown.appendChild(opt);
     });
+
+    // Update filter badge text
+    if (dom.filteredCountBadge) {
+      dom.filteredCountBadge.textContent = `${toKhmerDigits(filteredList.length)}/${toKhmerDigits(state.excelRows.length)}`;
+    }
   }
 
   function setMode(mode) {
@@ -1039,8 +1183,14 @@
   }
 
   function navigateRecord(dir) {
-    if (!state.excelRows.length) return;
-    state.currentRecordIndex = (state.currentRecordIndex + dir + state.excelRows.length) % state.excelRows.length;
+    const filteredList = getFilteredRecords(state.ticketFilter);
+    if (!filteredList.length) return;
+
+    let currentPos = filteredList.findIndex(item => item.originalIndex === state.currentRecordIndex);
+    if (currentPos === -1) currentPos = 0;
+
+    const nextPos = (currentPos + dir + filteredList.length) % filteredList.length;
+    state.currentRecordIndex = filteredList[nextPos].originalIndex;
     setMode('preview');
   }
 
@@ -1235,29 +1385,128 @@
   // ──────────────────────────────────────────────────────────────────────────
   // Excel Data Table Modal
   // ──────────────────────────────────────────────────────────────────────────
+  // ──────────────────────────────────────────────────────────────────────────
+  // Excel Data Table Modal
+  // ──────────────────────────────────────────────────────────────────────────
   function renderExcelTableModal() {
     if (!state.excelRows.length) {
       dom.excelTableContainer.innerHTML = '<p class="empty-hint">មិនទាន់មានទិន្នន័យ Excel</p>';
+      if (dom.modalCountAll) dom.modalCountAll.textContent = '0';
+      if (dom.modalCountSingle) dom.modalCountSingle.textContent = '0';
+      if (dom.modalCountMultiple) dom.modalCountMultiple.textContent = '0';
       return;
     }
-    let html = '<table class="data-table"><thead><tr><th>#</th>';
-    state.excelHeaders.forEach(h => { html += `<th>${escapeHtml(h)}</th>`; });
-    html += '</tr></thead><tbody>';
-    state.excelRows.forEach((row, i) => {
-      html += `<tr><td>${toKhmerDigits(i + 1)}</td>`;
-      state.excelHeaders.forEach(h => { html += `<td>${escapeHtml(String(row[h] ?? ''))}</td>`; });
-      html += '</tr>';
+
+    // Calculate total counts for filter tabs
+    let singleCount = 0;
+    let multiCount = 0;
+    state.excelRows.forEach(r => {
+      const tc = getRecordTicketCount(r, state.excelHeaders);
+      if (tc > 1) multiCount++;
+      else singleCount++;
     });
+
+    if (dom.modalCountAll) dom.modalCountAll.textContent = toKhmerDigits(state.excelRows.length);
+    if (dom.modalCountSingle) dom.modalCountSingle.textContent = toKhmerDigits(singleCount);
+    if (dom.modalCountMultiple) dom.modalCountMultiple.textContent = toKhmerDigits(multiCount);
+
+    const query = (state.modalSearchQuery || '').toLowerCase().trim();
+
+    // Filter rows for modal view based on tab and search
+    const visibleRows = [];
+    state.excelRows.forEach((row, i) => {
+      const ticketCount = getRecordTicketCount(row, state.excelHeaders);
+      const isMulti = ticketCount > 1;
+
+      // Tab filter
+      if (state.modalTabFilter === 'single' && isMulti) return;
+      if (state.modalTabFilter === 'multiple' && !isMulti) return;
+
+      // Search query filter
+      if (query) {
+        const rowText = Object.values(row).join(' ').toLowerCase();
+        if (!rowText.includes(query)) return;
+      }
+
+      visibleRows.push({ row, originalIndex: i, ticketCount, isMulti });
+    });
+
+    if (!visibleRows.length) {
+      dom.excelTableContainer.innerHTML = '<p class="empty-hint" style="text-align:center;padding:24px;">មិនមានទិន្នន័យត្រូវនឹងការ Filter/ស្វែងរកនេះទេ</p>';
+      return;
+    }
+
+    let html = '<table class="data-table"><thead><tr><th>#</th><th>ប្រភេទ</th>';
+    state.excelHeaders.forEach(h => { html += `<th>${escapeHtml(h)}</th>`; });
+    html += '<th style="text-align:center;">សកម្មភាព</th></tr></thead><tbody>';
+
+    visibleRows.forEach((item) => {
+      const typeBadge = item.isMulti
+        ? `<span class="badge-type badge-multiple"><i data-lucide="layers" style="width:12px;height:12px"></i> ${toKhmerDigits(item.ticketCount)} លេខ</span>`
+        : `<span class="badge-type badge-single"><i data-lucide="check-circle-2" style="width:12px;height:12px"></i> 1 លេខ</span>`;
+
+      const isCurrent = item.originalIndex === state.currentRecordIndex;
+      html += `<tr style="${isCurrent ? 'background:rgba(217,119,6,0.18);' : ''}">
+        <td>${toKhmerDigits(item.originalIndex + 1)}</td>
+        <td>${typeBadge}</td>`;
+
+      state.excelHeaders.forEach(h => {
+        html += `<td>${escapeHtml(String(item.row[h] ?? ''))}</td>`;
+      });
+
+      html += `<td style="text-align:center;">
+        <button class="btn btn-secondary btn-sm-preview" data-index="${item.originalIndex}" style="padding:3px 8px;font-size:0.75rem;">
+          <i data-lucide="eye" style="width:12px;height:12px"></i> Preview
+        </button>
+      </td></tr>`;
+    });
+
     html += '</tbody></table>';
     dom.excelTableContainer.innerHTML = html;
+    lucide.createIcons();
+
+    // Click handler for Preview buttons in modal table
+    dom.excelTableContainer.querySelectorAll('.btn-sm-preview').forEach(btn => {
+      btn.addEventListener('click', e => {
+        const idx = parseInt(e.currentTarget.getAttribute('data-index'), 10);
+        if (!isNaN(idx)) {
+          state.currentRecordIndex = idx;
+          setMode('preview');
+          dom.dataModal.classList.add('hidden');
+        }
+      });
+    });
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Batch Export → ZIP
+  // Batch Export → ZIP (Option to export all or filtered rows)
   // ──────────────────────────────────────────────────────────────────────────
-  async function handleBatchExport() {
+  async function handleBatchExport(filteredOnly = false) {
     if (!state.excelRows.length) {
       alert('Upload ឯកសារ Excel ជាមុនសិន!');
+      return;
+    }
+
+    let exportTargetRows = state.excelRows;
+    let zipFilename = 'Posters_Bulk_Export.zip';
+
+    if (filteredOnly) {
+      const activeFilter = state.modalTabFilter !== 'all' ? state.modalTabFilter : state.ticketFilter;
+      const filteredItems = getFilteredRecords(activeFilter);
+      
+      // Apply search query if present
+      const query = (state.modalSearchQuery || '').toLowerCase().trim();
+      const finalItems = query
+        ? filteredItems.filter(item => Object.values(item.row).join(' ').toLowerCase().includes(query))
+        : filteredItems;
+
+      exportTargetRows = finalItems.map(item => item.row);
+      const tag = activeFilter === 'single' ? 'Single_Tickets' : (activeFilter === 'multiple' ? 'Multiple_Tickets' : 'Filtered');
+      zipFilename = `Posters_${tag}_Export.zip`;
+    }
+
+    if (!exportTargetRows.length) {
+      alert('គ្មានទិន្នន័យសម្រាប់ Export តាម Filter នេះទេ!');
       return;
     }
 
@@ -1270,21 +1519,22 @@
     off.width     = state.templateWidth;
     off.height    = state.templateHeight;
     const offCtx  = off.getContext('2d');
-    const total   = state.excelRows.length;
+    const total   = exportTargetRows.length;
 
     for (let i = 0; i < total; i++) {
       if (state.cancelExport) break;
 
-      const row = state.excelRows[i];
+      const row = exportTargetRows[i];
       renderCanvas(offCtx, row);
 
       const blob = await new Promise(res => off.toBlob(res, 'image/png', 0.95));
-      const name = String(Object.values(row)[0] || `poster_${i + 1}`).replace(/[\\/:*?"<>|]/g, '_');
+      const nameHeader = state.excelHeaders.find(h => /ឈ្មោះ|name|owner|ម្ចាស់/i.test(h)) || state.excelHeaders[0];
+      const name = String(row[nameHeader] || Object.values(row)[0] || `poster_${i + 1}`).replace(/[\\/:*?"<>|]/g, '_');
       zip.file(`poster_${String(i + 1).padStart(3, '0')}_${name}.png`, blob);
 
       const pct = Math.round(((i + 1) / total) * 100);
       dom.exportProgressBar.style.width  = pct + '%';
-      dom.exportStatusText.textContent   = `Export ${i + 1} / ${total} ...`;
+      dom.exportStatusText.textContent   = `Export ${i + 1} / ${total} (${name}) ...`;
 
       await new Promise(r => setTimeout(r, 10));
     }
@@ -1292,7 +1542,7 @@
     if (!state.cancelExport) {
       dom.exportStatusText.textContent = 'Compressing ZIP...';
       const content = await zip.generateAsync({ type: 'blob' });
-      saveAs(content, 'Posters_Bulk_Export.zip');
+      saveAs(content, zipFilename);
     }
 
     dom.exportModal.classList.add('hidden');
