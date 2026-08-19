@@ -598,21 +598,52 @@
     return cleanArr.map(toKhmerDigits).join(' - ');
   }
 
-  /** Group duplicate names into single records (merging sequence numbers into "៦៤ - ៨៨") */
+  /** Normalize a name string for comparison: strip zero-width chars, collapse whitespace, NFC normalize */
+  function normalizeName(name) {
+    if (!name) return '';
+    let s = String(name);
+    // Unicode NFC normalization
+    if (s.normalize) s = s.normalize('NFC');
+    // Remove zero-width characters (ZWNJ, ZWJ, ZWSP, BOM, etc.)
+    s = s.replace(/[\u200B\u200C\u200D\uFEFF\u00AD\u034F\u2028\u2029\u202A-\u202E\u2060-\u2064\u2066-\u206F]/g, '');
+    // Collapse all whitespace (tabs, non-breaking spaces, etc.) into single space
+    s = s.replace(/[\s\u00A0\u1680\u2000-\u200A\u3000]+/g, ' ');
+    // Trim
+    s = s.trim();
+    return s;
+  }
+
+  /** Group duplicate names into single records (merging sequence numbers into "៦៥-៨៨") */
   function groupDuplicateRecords(rows, headers) {
     if (!rows || !rows.length) return rows;
 
     const nameHeader = headers.find(h => /ឈ្មោះ|name|owner|ម្ចាស់/i.test(h)) || headers[1] || headers[0];
     const ticketHeader = headers.find(h => /លេខ|ឆ្នោត|ស្លាក|រៀង|no|number|code|id/i.test(h)) || headers[0];
 
+    // Make sure nameHeader and ticketHeader are different
+    let finalTicketHeader = ticketHeader;
+    if (nameHeader === ticketHeader && headers.length > 1) {
+      finalTicketHeader = headers.find(h => h !== nameHeader && /លេខ|ឆ្នោត|ស្លាក|រៀង|no|number|code|id/i.test(h)) || headers[0];
+      if (finalTicketHeader === nameHeader) {
+        finalTicketHeader = headers[0] !== nameHeader ? headers[0] : headers[1];
+      }
+    }
+
+    console.log('[GroupDuplicates] nameHeader:', nameHeader, '| ticketHeader:', finalTicketHeader);
+    console.log('[GroupDuplicates] Total rows before grouping:', rows.length);
+
     const groupedMap = new Map();
 
-    rows.forEach(row => {
-      const rawName = String(row[nameHeader] ?? '').trim();
+    rows.forEach((row, idx) => {
+      const rawName = normalizeName(row[nameHeader]);
       if (!rawName) return;
 
-      const key = rawName.toLowerCase().replace(/\s+/g, ' ');
-      const rawTicket = String(row[ticketHeader] ?? '').trim();
+      const key = rawName.toLowerCase();
+      const rawTicket = String(row[finalTicketHeader] ?? '').trim();
+
+      if (idx < 3) {
+        console.log(`[GroupDuplicates] Row ${idx}: name="${rawName}" key="${key}" ticket="${rawTicket}"`);
+      }
 
       if (!groupedMap.has(key)) {
         groupedMap.set(key, {
@@ -626,7 +657,7 @@
           item.tickets.push(rawTicket);
         }
         headers.forEach(h => {
-          if (h !== nameHeader && h !== ticketHeader && row[h]) {
+          if (h !== nameHeader && h !== finalTicketHeader && row[h]) {
             const existingVal = String(item.rowCopy[h] ?? '').trim();
             const newVal = String(row[h]).trim();
             if (!existingVal) {
@@ -639,11 +670,13 @@
       }
     });
 
+    console.log('[GroupDuplicates] Unique names after grouping:', groupedMap.size);
+
     const result = [];
     groupedMap.forEach(item => {
       const row = { ...item.rowCopy };
       row[nameHeader] = item.name;
-      row[ticketHeader] = formatTicketNumbers(item.tickets);
+      row[finalTicketHeader] = formatTicketNumbers(item.tickets);
 
       headers.forEach(h => {
         row[h] = toKhmerDigits(row[h]);
