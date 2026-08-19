@@ -516,20 +516,28 @@
     });
   }
 
-  /** Convert Latin digits (0-9) to Khmer digits (<ctrl42>-៩) */
+  /** Convert Latin digits (0-9) to Khmer digits (០-៩) */
   function toKhmerDigits(val) {
     if (val === null || val === undefined) return '';
     const khmerDigits = ['០', '១', '២', '៣', '៤', '៥', '៦', '៧', '៨', '៩'];
     return String(val).replace(/[0-9]/g, ch => khmerDigits[parseInt(ch, 10)]);
   }
 
-  /** Format ticket numbers e.g. ["1", "2", "3", "4"] -> "១-៤" or ["64", "88"] -> "៦៤-៨៨" */
+  /** Convert Khmer digits (០-៩) back to Latin digits (0-9) */
+  function toLatinDigits(val) {
+    if (val === null || val === undefined) return '';
+    const map = { '០':'0', '១':'1', '២':'2', '៣':'3', '៤':'4', '៥':'5', '៦':'6', '៧':'7', '៨':'8', '៩':'9' };
+    return String(val).replace(/[០-៩]/g, ch => map[ch] || ch);
+  }
+
+  /** Format ticket numbers e.g. ["1", "2", "3", "4"] -> "១-៤" or ["65", ..., "88"] -> "៦៥-៨៨" */
   function formatTicketNumbers(ticketArr) {
     if (!ticketArr || !ticketArr.length) return '';
     
     const cleanArr = [];
     ticketArr.forEach(tStr => {
-      const parts = String(tStr).split(/[,;/]+/).map(s => s.trim()).filter(Boolean);
+      const latinStr = toLatinDigits(tStr);
+      const parts = latinStr.split(/[,;/]+/).map(s => s.trim()).filter(Boolean);
       parts.forEach(p => {
         if (!cleanArr.includes(p)) cleanArr.push(p);
       });
@@ -539,7 +547,7 @@
     if (cleanArr.length === 1) return toKhmerDigits(cleanArr[0]);
 
     const numObjects = cleanArr.map(t => {
-      const match = String(t).match(/\d+/);
+      const match = t.match(/\d+/);
       return {
         original: t,
         num: match ? parseInt(match[0], 10) : null
