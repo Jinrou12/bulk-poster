@@ -492,6 +492,13 @@
     });
   }
 
+  /** Convert Latin digits (0-9) to Khmer digits (០-៩) */
+  function toKhmerDigits(val) {
+    if (val === null || val === undefined) return '';
+    const khmerDigits = ['០', '១', '២', '៣', '៤', '៥', '៦', '៧', '៨', '៩'];
+    return String(val).replace(/[0-9]/g, ch => khmerDigits[parseInt(ch, 10)]);
+  }
+
   /** Build state.excelHeaders and state.excelRows from raw array-of-arrays */
   function applyExcelData(rows, headerRowIndex) {
     let headers = [];
@@ -522,7 +529,10 @@
       const arr = rows[r];
       if (!arr || arr.every(c => c === null || c === undefined || String(c).trim() === '')) continue;
       const obj = {};
-      headers.forEach((h, i) => { obj[h] = arr[i] !== undefined ? arr[i] : ''; });
+      headers.forEach((h, i) => {
+        const val = arr[i] !== undefined ? arr[i] : '';
+        obj[h] = toKhmerDigits(val);
+      });
       dataRows.push(obj);
     }
 
@@ -797,7 +807,7 @@
     if (!pattern || !row) return pattern || '';
     return pattern.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, col) => {
       const v = row[col.trim()];
-      return v !== undefined ? v : `{{ ${col.trim()} }}`;
+      return v !== undefined ? toKhmerDigits(v) : `{{ ${col.trim()} }}`;
     });
   }
 
@@ -809,8 +819,8 @@
     state.excelRows.forEach((row, i) => {
       const opt  = document.createElement('option');
       opt.value  = i;
-      const name = Object.values(row)[0] || `Record #${i + 1}`;
-      opt.textContent = `Record ${i + 1}: ${name}`;
+      const name = Object.values(row)[0] || `Record #${toKhmerDigits(i + 1)}`;
+      opt.textContent = `Record ${toKhmerDigits(i + 1)}: ${name}`;
       dom.recordDropdown.appendChild(opt);
     });
   }
@@ -1035,7 +1045,7 @@
     state.excelHeaders.forEach(h => { html += `<th>${escapeHtml(h)}</th>`; });
     html += '</tr></thead><tbody>';
     state.excelRows.forEach((row, i) => {
-      html += `<tr><td>${i + 1}</td>`;
+      html += `<tr><td>${toKhmerDigits(i + 1)}</td>`;
       state.excelHeaders.forEach(h => { html += `<td>${escapeHtml(String(row[h] ?? ''))}</td>`; });
       html += '</tr>';
     });
