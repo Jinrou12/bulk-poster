@@ -523,13 +523,13 @@
     return String(val).replace(/[0-9]/g, ch => khmerDigits[parseInt(ch, 10)]);
   }
 
-  /** Format ticket numbers e.g. ["64", "88"] -> "៦៤ - ៨៨" or ["64", "65", "66"] -> "៦៤ - ៦៦" */
+  /** Format ticket numbers e.g. ["1", "2", "3", "4"] -> "១-៤" or ["64", "88"] -> "៦៤-៨៨" */
   function formatTicketNumbers(ticketArr) {
     if (!ticketArr || !ticketArr.length) return '';
     
     const cleanArr = [];
     ticketArr.forEach(tStr => {
-      const parts = String(tStr).split(/[,/]+/).map(s => s.trim()).filter(Boolean);
+      const parts = String(tStr).split(/[,;/]+/).map(s => s.trim()).filter(Boolean);
       parts.forEach(p => {
         if (!cleanArr.includes(p)) cleanArr.push(p);
       });
@@ -538,21 +538,53 @@
     if (!cleanArr.length) return '';
     if (cleanArr.length === 1) return toKhmerDigits(cleanArr[0]);
 
-    const nums = cleanArr.map(t => parseInt(t.replace(/[^0-9]/g, ''), 10));
-    const allNumeric = nums.every(n => !isNaN(n));
+    const numObjects = cleanArr.map(t => {
+      const match = String(t).match(/\d+/);
+      return {
+        original: t,
+        num: match ? parseInt(match[0], 10) : null
+      };
+    });
 
-    if (allNumeric && cleanArr.length > 2) {
-      const sorted = [...nums].sort((a, b) => a - b);
-      let isConsecutive = true;
-      for (let i = 1; i < sorted.length; i++) {
-        if (sorted[i] !== sorted[i - 1] + 1) {
-          isConsecutive = false;
-          break;
+    const allNumeric = numObjects.every(o => o.num !== null);
+
+    if (allNumeric) {
+      numObjects.sort((a, b) => a.num - b.num);
+
+      const uniqueNums = [];
+      numObjects.forEach(o => {
+        if (!uniqueNums.includes(o.num)) uniqueNums.push(o.num);
+      });
+
+      const ranges = [];
+      let start = uniqueNums[0];
+      let prev = uniqueNums[0];
+
+      for (let i = 1; i < uniqueNums.length; i++) {
+        const curr = uniqueNums[i];
+        if (curr === prev + 1) {
+          prev = curr;
+        } else {
+          if (start === prev) {
+            ranges.push(toKhmerDigits(start));
+          } else {
+            ranges.push(`${toKhmerDigits(start)}-${toKhmerDigits(prev)}`);
+          }
+          start = curr;
+          prev = curr;
         }
       }
-      if (isConsecutive) {
-        return `${toKhmerDigits(sorted[0])} - ${toKhmerDigits(sorted[sorted.length - 1])}`;
+
+      if (start === prev) {
+        ranges.push(toKhmerDigits(start));
+      } else {
+        ranges.push(`${toKhmerDigits(start)}-${toKhmerDigits(prev)}`);
       }
+
+      if (ranges.length === 2 && uniqueNums.length === 2) {
+        return ranges.join(' - ');
+      }
+      return ranges.join(', ');
     }
 
     return cleanArr.map(toKhmerDigits).join(' - ');
