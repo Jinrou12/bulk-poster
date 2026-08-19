@@ -329,7 +329,7 @@
       state.elements = [
         {
           id: `el_${t}_1`, type: 'text',
-          text: '{{ ឈ្មោះម្ចាស់ឆ្នោត }}',
+          text: '{{ គោត្តនាម-នាម }}',
           x: 775, y: 268, width: 580, height: 60,
           fontFamily: "'Moul', Khmer, serif", fontSize: 30,
           color: '#5b360f', strokeColor: '#ffffff', strokeWidth: 0, shadowBlur: 0,
@@ -337,7 +337,7 @@
         },
         {
           id: `el_${t}_2`, type: 'text',
-          text: '{{ លេខឆ្នោត }}',
+          text: '{{ ល.រ }}',
           x: 250, y: 568, width: 250, height: 50,
           fontFamily: "'Moul', Khmer, serif", fontSize: 36,
           color: '#d97706', strokeColor: '#ffffff', strokeWidth: 2, shadowBlur: 4,
@@ -349,12 +349,16 @@
         }
       ];
 
-      state.excelHeaders = ['ឈ្មោះម្ចាស់ឆ្នោត', 'លេខឆ្នោត', 'ចំនួនប្រាក់', 'ទូរស័ព្ទ'];
+      state.excelHeaders = ['ល.រ', 'គោត្តនាម-នាម', 'លេខទូរស័ព្ទ', 'ព្រះសង្ឃ'];
       state.excelRows = [
-        { 'ឈ្មោះម្ចាស់ឆ្នោត': 'ឯកឧត្ដម ខែក សំអូន លោកជំទាវ ស៊ី វណ្ណថា', 'លេខឆ្នោត': '៦៤ - ៨៨', 'ចំនួនប្រាក់': '$500', 'ទូរស័ព្ទ': '012 888 999' },
-        { 'ឈ្មោះម្ចាស់ឆ្នោត': 'ឧបាសិកា សុខ ចាន់ធា',                   'លេខឆ្នោត': '០១',       'ចំនួនប្រាក់': '$100', 'ទូរស័ព្ទ': '012 345 678' },
-        { 'ឈ្មោះម្ចាស់ឆ្នោត': 'លោក ជា សុជាតិ និងភរិយា',              'លេខឆ្នោត': '០២',       'ចំនួនប្រាក់': '$200', 'ទូរស័ព្ទ': '098 765 432' },
-        { 'ឈ្មោះម្ចាស់ឆ្នោត': 'អ្នកស្រី ហេង លីដា',                    'លេខឆ្នោត': '០៣',       'ចំនួនប្រាក់': '$50',  'ទូរស័ព្ទ': '011 223 344' }
+        { 'ល.រ': '៦៩ - ៨៨',  'គោត្តនាម-នាម': 'ឯកឧត្តម ខែក សំអុន លោកជំទាវ ស៊ី វណ្ណថា', 'លេខទូរស័ព្ទ': '012832823', 'ព្រះសង្ឃ': '២០ អង្គ' },
+        { 'ល.រ': '២៩ - ៣០',  'គោត្តនាម-នាម': 'ឧបាសិកា ចាន់ សុខេង',                   'លេខទូរស័ព្ទ': '089883685', 'ព្រះសង្ឃ': '២ អង្គ' },
+        { 'ល.រ': '៥៥ - ៥៦',  'គោត្តនាម-នាម': 'លោកស្រី សុខ ស៊ីណាត',                   'លេខទូរស័ព្ទ': '011416069', 'ព្រះសង្ឃ': '២ អង្គ' },
+        { 'ល.រ': '៦៣ - ៦៤',  'គោត្តនាម-នាម': 'ឧបាសក វ័រ គង់ ឧបាសិកា ឌី សុខ',          'លេខទូរស័ព្ទ': '070586505', 'ព្រះសង្ឃ': '២ អង្គ' },
+        { 'ល.រ': '១',         'គោត្តនាម-នាម': 'ឧបាសក អ៊ុន សុផា',                       'លេខទូរស័ព្ទ': '0962216763', 'ព្រះសង្ឃ': '១ អង្គ' },
+        { 'ល.រ': '២',         'គោត្តនាម-នាម': 'លោក បូរ និង ស៊ី រ៉ាត',                  'លេខទូរស័ព្ទ': '0964733670', 'ព្រះសង្ឃ': '១ អង្គ' },
+        { 'ល.រ': '៣',         'គោត្តនាម-នាម': 'ឧបាសក សាន សន ឧបាសិកា ស៊ាន ក្រឹម',      'លេខទូរស័ព្ទ': '0964987762', 'ព្រះសង្ឃ': '១ អង្គ' },
+        { 'ល.រ': '៤',         'គោត្តនាម-នាម': 'ឧបាសក ជា អន ឧបាសិកា ថេង កាក់',          'លេខទូរស័ព្ទ': '092767025', 'ព្រះសង្ឃ': '១ អង្គ' }
       ];
 
       dom.excelStatusBadge.textContent = `${state.excelRows.length} Sample Records`;
@@ -670,13 +674,13 @@
   function groupDuplicateRecords(rows, headers) {
     if (!rows || !rows.length) return rows;
 
-    const nameHeader = headers.find(h => /ឈ្មោះ|name|owner|ម្ចាស់/i.test(h)) || headers[1] || headers[0];
-    const ticketHeader = headers.find(h => /លេខ|ឆ្នោត|ស្លាក|រៀង|no|number|code|id/i.test(h)) || headers[0];
+    const nameHeader = headers.find(h => /ឈ្មោះ|name|owner|ម្ចាស់|គោត្តនាម|បេក្ខភាព/i.test(h)) || headers[1] || headers[0];
+    const ticketHeader = headers.find(h => /លេខ|ឆ្នោត|ស្លាក|រៀង|no|number|code|id|ល\.រ/i.test(h)) || headers[0];
 
     // Make sure nameHeader and ticketHeader are different
     let finalTicketHeader = ticketHeader;
     if (nameHeader === ticketHeader && headers.length > 1) {
-      finalTicketHeader = headers.find(h => h !== nameHeader && /លេខ|ឆ្នោត|ស្លាក|រៀង|no|number|code|id/i.test(h)) || headers[0];
+      finalTicketHeader = headers.find(h => h !== nameHeader && /លេខ|ឆ្នោត|ស្លាក|រៀង|no|number|code|id|ល\.រ/i.test(h)) || headers[0];
       if (finalTicketHeader === nameHeader) {
         finalTicketHeader = headers[0] !== nameHeader ? headers[0] : headers[1];
       }
@@ -809,24 +813,46 @@
 
     // Automatically switch to Live Preview Mode (Record 1) so user immediately sees filled poster!
     setMode('preview');
-    alert(`Upload ជោគជ័យ! បញ្ចូលបាន ${dataRows.length} Records (បង្រួមឈ្មោះដូចគ្នា)។ កំពុងបង្ហាញ Live Preview...`);
+
+    let singleCount = 0;
+    let multiCount = 0;
+    const countsMap = buildPersonTicketCountsMap();
+    const nameHeader = state.excelHeaders.find(h => /ឈ្មោះ|name|owner|ម្ចាស់|គោត្តនាម|បេក្ខភាព/i.test(h)) || state.excelHeaders[1] || state.excelHeaders[0];
+
+    state.excelRows.forEach((r, i) => {
+      const rawName = normalizeName(r[nameHeader]);
+      const key = rawName ? rawName.toLowerCase() : `row_${i}`;
+      const tc = countsMap.get(key) || getRecordTicketCount(r, state.excelHeaders);
+      if (tc > 1) multiCount++;
+      else singleCount++;
+    });
+
+    alert(`✔ Upload ឯកសារ Excel ជោគជ័យ!
+បញ្ចូលបានសរុប ${state.excelRows.length} ឈ្មោះ។ ប្រព័ន្ធបានបែងចែកជា ២ ក្រុមស្វ័យប្រវត្តិ៖
+• 🟢 ឈ្មោះ ១ មានលេខរៀង ១ ៖ ${toKhmerDigits(singleCount)} នាក់
+• 🔵 ឈ្មោះ តែ ១ មានលេខរៀងច្រើន ៖ ${toKhmerDigits(multiCount)} នាក់
+
+លោកអ្នកអាចចុចលើ Filter ឬ Tab ដើម្បីជ្រើសរើសមើល និង Export Posters តាមក្រុមបានភ្លាមៗ!`);
   }
 
   /** Smart placeholder auto-mapper */
   function autoMapPlaceholders(headers) {
     if (!headers || !headers.length) return;
 
+    const nameHeader = headers.find(h => /ឈ្មោះ|name|owner|ម្ចាស់|គោត្តនាម|បេក្ខភាព/i.test(h)) || headers[1] || headers[0];
+    let ticketHeader = headers.find(h => h !== nameHeader && /លេខ|ឆ្នោត|ស្លាក|រៀង|no|number|code|id|ល\.រ/i.test(h));
+    if (!ticketHeader) {
+      ticketHeader = headers.find(h => h !== nameHeader) || (headers[0] !== nameHeader ? headers[0] : headers[1]);
+    }
+
     state.elements.forEach((el) => {
       if (el.type !== 'text') return;
       const currentText = el.text || '';
 
-      // If placeholder contains generic sample names like 'ឈ្មោះម្ចាស់ឆ្នោត' or 'ឧបាសក' or 'Col_B' or 'Column 2'
-      if (headers.length >= 2) {
-        if (currentText.includes('ឈ្មោះ') || currentText.includes('ឧបាសក') || currentText.includes('Col_B')) {
-          el.text = `{{ ${headers[1]} }}`;
-        } else if (currentText.includes('លេខ') || currentText.includes('Col_A')) {
-          el.text = `{{ ${headers[0]} }}`;
-        }
+      if (/ឈ្មោះ|គោត្តនាម|owner|name|ម្ចាស់|បេក្ខភាព/i.test(currentText)) {
+        el.text = `{{ ${nameHeader} }}`;
+      } else if (/លេខ|ឆ្នោត|ស្លាក|រៀង|no|number|code|id|ល\.រ/i.test(currentText)) {
+        el.text = `{{ ${ticketHeader} }}`;
       }
     });
 
@@ -1073,8 +1099,8 @@
     if (!state.excelRows || !state.excelRows.length) return countsMap;
 
     const currentHeaders = state.excelHeaders;
-    const nameHeader = currentHeaders.find(h => /ឈ្មោះ|name|owner|ម្ចាស់/i.test(h)) || currentHeaders[1] || currentHeaders[0];
-    let ticketHeader = currentHeaders.find(h => h !== nameHeader && /លេខ|ឆ្នោត|ស្លាក|រៀង|no|number|code|id/i.test(h));
+    const nameHeader = currentHeaders.find(h => /ឈ្មោះ|name|owner|ម្ចាស់|គោត្តនាម|បេក្ខភាព/i.test(h)) || currentHeaders[1] || currentHeaders[0];
+    let ticketHeader = currentHeaders.find(h => h !== nameHeader && /លេខ|ឆ្នោត|ស្លាក|រៀង|no|number|code|id|ល\.រ/i.test(h));
     if (!ticketHeader) {
       ticketHeader = currentHeaders.find(h => h !== nameHeader) || (currentHeaders[0] !== nameHeader ? currentHeaders[0] : currentHeaders[1]);
     }
@@ -1129,8 +1155,8 @@
     }
 
     const currentHeaders = (headers && headers.length) ? headers : state.excelHeaders;
-    const nameHeader = currentHeaders.find(h => /ឈ្មោះ|name|owner|ម្ចាស់/i.test(h)) || currentHeaders[1] || currentHeaders[0];
-    let ticketHeader = currentHeaders.find(h => h !== nameHeader && /លេខ|ឆ្នោត|ស្លាក|រៀង|no|number|code|id/i.test(h));
+    const nameHeader = currentHeaders.find(h => /ឈ្មោះ|name|owner|ម្ចាស់|គោត្តនាម|បេក្ខភាព/i.test(h)) || currentHeaders[1] || currentHeaders[0];
+    let ticketHeader = currentHeaders.find(h => h !== nameHeader && /លេខ|ឆ្នោត|ស្លាក|រៀង|no|number|code|id|ល\.រ/i.test(h));
     if (!ticketHeader) {
       ticketHeader = currentHeaders.find(h => h !== nameHeader) || (currentHeaders[0] !== nameHeader ? currentHeaders[0] : currentHeaders[1]);
     }
@@ -1143,7 +1169,7 @@
   function getFilteredRecords(filterType) {
     const fType = filterType || state.ticketFilter || 'all';
     const countsMap = buildPersonTicketCountsMap();
-    const nameHeader = state.excelHeaders.find(h => /ឈ្មោះ|name|owner|ម្ចាស់/i.test(h)) || state.excelHeaders[1] || state.excelHeaders[0];
+    const nameHeader = state.excelHeaders.find(h => /ឈ្មោះ|name|owner|ម្ចាស់|គោត្តនាម|បេក្ខភាព/i.test(h)) || state.excelHeaders[1] || state.excelHeaders[0];
 
     const list = [];
     state.excelRows.forEach((row, originalIndex) => {
