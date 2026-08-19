@@ -62,6 +62,7 @@
 
     btnPrevRecord:        document.getElementById('btnPrevRecord'),
     btnNextRecord:        document.getElementById('btnNextRecord'),
+    btnGroupDuplicateNames: document.getElementById('btnGroupDuplicateNames'),
     recordDropdown:       document.getElementById('recordDropdown'),
     modeTemplateBtn:      document.getElementById('modeTemplateBtn'),
     modePreviewBtn:       document.getElementById('modePreviewBtn'),
@@ -128,6 +129,23 @@
     dom.modePreviewBtn.addEventListener('click',  () => setMode('preview'));
     dom.btnPrevRecord.addEventListener('click',   () => navigateRecord(-1));
     dom.btnNextRecord.addEventListener('click',   () => navigateRecord(1));
+    if (dom.btnGroupDuplicateNames) {
+      dom.btnGroupDuplicateNames.addEventListener('click', () => {
+        if (!state.excelRows.length) {
+          alert('សូម Upload ឯកសារ Excel ជាមុនសិន!');
+          return;
+        }
+        const countBefore = state.excelRows.length;
+        state.excelRows = groupDuplicateRecords(state.excelRows, state.excelHeaders);
+        const countAfter = state.excelRows.length;
+        state.currentRecordIndex = 0;
+        dom.excelStatusBadge.textContent = `${countAfter} Records (Grouped)`;
+        updateRecordDropdown();
+        renderExcelTableModal();
+        renderCanvas();
+        alert(`បង្រួមទិន្នន័យបានជោគជ័យ! (ពី ${countBefore} Records មកនៅ ${countAfter} Records)`);
+      });
+    }
     dom.recordDropdown.addEventListener('change', e => {
       if (e.target.value === 'template') {
         setMode('template');
@@ -280,10 +298,10 @@
 
       state.excelHeaders = ['ឈ្មោះម្ចាស់ឆ្នោត', 'លេខឆ្នោត', 'ចំនួនប្រាក់', 'ទូរស័ព្ទ'];
       state.excelRows = [
-        { 'ឈ្មោះម្ចាស់ឆ្នោត': 'ឧបាសិកា សុខ ចាន់ធា',      'លេខឆ្នោត': '០១', 'ចំនួនប្រាក់': '$100', 'ទូរស័ព្ទ': '012 345 678' },
-        { 'ឈ្មោះម្ចាស់ឆ្នោត': 'លោក ជា សុជាតិ និងភរិយា', 'លេខឆ្នោត': '០២', 'ចំនួនប្រាក់': '$200', 'ទូរស័ព្ទ': '098 765 432' },
-        { 'ឈ្មោះម្ចាស់ឆ្នោត': 'អ្នកស្រី ហេង លីដា',       'លេខឆ្នោត': '០៣', 'ចំនួនប្រាក់': '$50',  'ទូរស័ព្ទ': '011 223 344' },
-        { 'ឈ្មោះម្ចាស់ឆ្នោត': 'លោកតា គង់ សំអឿន',        'លេខឆ្នោត': '០៤', 'ចំនួនប្រាក់': '$150', 'ទូរស័ព្ទ': '088 990 011' }
+        { 'ឈ្មោះម្ចាស់ឆ្នោត': 'ឯកឧត្ដម ខែក សំអូន លោកជំទាវ ស៊ី វណ្ណថា', 'លេខឆ្នោត': '៦៤ - ៨៨', 'ចំនួនប្រាក់': '$500', 'ទូរស័ព្ទ': '012 888 999' },
+        { 'ឈ្មោះម្ចាស់ឆ្នោត': 'ឧបាសិកា សុខ ចាន់ធា',                   'លេខឆ្នោត': '០១',       'ចំនួនប្រាក់': '$100', 'ទូរស័ព្ទ': '012 345 678' },
+        { 'ឈ្មោះម្ចាស់ឆ្នោត': 'លោក ជា សុជាតិ និងភរិយា',              'លេខឆ្នោត': '០២',       'ចំនួនប្រាក់': '$200', 'ទូរស័ព្ទ': '098 765 432' },
+        { 'ឈ្មោះម្ចាស់ឆ្នោត': 'អ្នកស្រី ហេង លីដា',                    'លេខឆ្នោត': '០៣',       'ចំនួនប្រាក់': '$50',  'ទូរស័ព្ទ': '011 223 344' }
       ];
 
       dom.excelStatusBadge.textContent = `${state.excelRows.length} Sample Records`;
@@ -432,6 +450,11 @@
               <input type="radio" name="headerModeOption" value="has_header" checked>
               <span><strong>📋 ជ្រើសរើស Row ខាងក្រោមជា Header (ចំណងជើងជួរឈរ)</strong></span>
             </label>
+
+            <label style="display:flex;align-items:center;gap:10px;margin-top:12px;cursor:pointer;font-size:0.88rem;color:#f59e0b;background:rgba(245,158,11,0.1);padding:8px 12px;border-radius:6px;border:1px dashed #f59e0b;">
+              <input type="checkbox" id="hpAutoGroupOption" checked>
+              <span><strong>🔀 បង្រួមឈ្មោះដូចគ្នាជា Poster តែមួយ</strong> (ឧទាហរណ៍៖ លេខ ៦៤ - ៨៨)</span>
+            </label>
           </div>
 
           <p style="color:#94a3b8;font-size:0.82rem;margin-bottom:10px;">
@@ -481,26 +504,119 @@
     document.getElementById('hpCancel').addEventListener('click', () => modal.remove());
     document.getElementById('hpApply').addEventListener('click', () => {
       const headerMode = modal.querySelector('input[name=headerModeOption]:checked').value;
+      const isAutoGroup = modal.querySelector('#hpAutoGroupOption') ? modal.querySelector('#hpAutoGroupOption').checked : true;
       if (headerMode === 'no_header') {
-        applyExcelData(rawExcelRows, -1);
+        applyExcelData(rawExcelRows, -1, isAutoGroup);
       } else {
         const selected = modal.querySelector('input[name=headerRowPicker]:checked');
         const hRow = selected ? parseInt(selected.value, 10) : autoHeaderRow;
-        applyExcelData(rawExcelRows, hRow);
+        applyExcelData(rawExcelRows, hRow, isAutoGroup);
       }
       modal.remove();
     });
   }
 
-  /** Convert Latin digits (0-9) to Khmer digits (០-៩) */
+  /** Convert Latin digits (0-9) to Khmer digits (<ctrl42>-៩) */
   function toKhmerDigits(val) {
     if (val === null || val === undefined) return '';
     const khmerDigits = ['០', '១', '២', '៣', '៤', '៥', '៦', '៧', '៨', '៩'];
     return String(val).replace(/[0-9]/g, ch => khmerDigits[parseInt(ch, 10)]);
   }
 
+  /** Format ticket numbers e.g. ["64", "88"] -> "៦៤ - ៨៨" or ["64", "65", "66"] -> "៦៤ - ៦៦" */
+  function formatTicketNumbers(ticketArr) {
+    if (!ticketArr || !ticketArr.length) return '';
+    
+    const cleanArr = [];
+    ticketArr.forEach(tStr => {
+      const parts = String(tStr).split(/[,/]+/).map(s => s.trim()).filter(Boolean);
+      parts.forEach(p => {
+        if (!cleanArr.includes(p)) cleanArr.push(p);
+      });
+    });
+
+    if (!cleanArr.length) return '';
+    if (cleanArr.length === 1) return toKhmerDigits(cleanArr[0]);
+
+    const nums = cleanArr.map(t => parseInt(t.replace(/[^0-9]/g, ''), 10));
+    const allNumeric = nums.every(n => !isNaN(n));
+
+    if (allNumeric && cleanArr.length > 2) {
+      const sorted = [...nums].sort((a, b) => a - b);
+      let isConsecutive = true;
+      for (let i = 1; i < sorted.length; i++) {
+        if (sorted[i] !== sorted[i - 1] + 1) {
+          isConsecutive = false;
+          break;
+        }
+      }
+      if (isConsecutive) {
+        return `${toKhmerDigits(sorted[0])} - ${toKhmerDigits(sorted[sorted.length - 1])}`;
+      }
+    }
+
+    return cleanArr.map(toKhmerDigits).join(' - ');
+  }
+
+  /** Group duplicate names into single records (merging sequence numbers into "៦៤ - ៨៨") */
+  function groupDuplicateRecords(rows, headers) {
+    if (!rows || !rows.length) return rows;
+
+    const nameHeader = headers.find(h => /ឈ្មោះ|name|owner|ម្ចាស់/i.test(h)) || headers[1] || headers[0];
+    const ticketHeader = headers.find(h => /លេខ|ឆ្នោត|ស្លាក|រៀង|no|number|code|id/i.test(h)) || headers[0];
+
+    const groupedMap = new Map();
+
+    rows.forEach(row => {
+      const rawName = String(row[nameHeader] ?? '').trim();
+      if (!rawName) return;
+
+      const key = rawName.toLowerCase().replace(/\s+/g, ' ');
+      const rawTicket = String(row[ticketHeader] ?? '').trim();
+
+      if (!groupedMap.has(key)) {
+        groupedMap.set(key, {
+          name: rawName,
+          tickets: rawTicket ? [rawTicket] : [],
+          rowCopy: { ...row }
+        });
+      } else {
+        const item = groupedMap.get(key);
+        if (rawTicket && !item.tickets.includes(rawTicket)) {
+          item.tickets.push(rawTicket);
+        }
+        headers.forEach(h => {
+          if (h !== nameHeader && h !== ticketHeader && row[h]) {
+            const existingVal = String(item.rowCopy[h] ?? '').trim();
+            const newVal = String(row[h]).trim();
+            if (!existingVal) {
+              item.rowCopy[h] = newVal;
+            } else if (newVal && !existingVal.includes(newVal)) {
+              item.rowCopy[h] = existingVal + ', ' + newVal;
+            }
+          }
+        });
+      }
+    });
+
+    const result = [];
+    groupedMap.forEach(item => {
+      const row = { ...item.rowCopy };
+      row[nameHeader] = item.name;
+      row[ticketHeader] = formatTicketNumbers(item.tickets);
+
+      headers.forEach(h => {
+        row[h] = toKhmerDigits(row[h]);
+      });
+
+      result.push(row);
+    });
+
+    return result;
+  }
+
   /** Build state.excelHeaders and state.excelRows from raw array-of-arrays */
-  function applyExcelData(rows, headerRowIndex) {
+  function applyExcelData(rows, headerRowIndex, autoGroup = true) {
     let headers = [];
     let startDataRow = 0;
 
@@ -524,16 +640,26 @@
     }
 
     // Build data rows (skip completely empty rows)
-    const dataRows = [];
+    let dataRows = [];
     for (let r = startDataRow; r < rows.length; r++) {
       const arr = rows[r];
       if (!arr || arr.every(c => c === null || c === undefined || String(c).trim() === '')) continue;
       const obj = {};
       headers.forEach((h, i) => {
         const val = arr[i] !== undefined ? arr[i] : '';
-        obj[h] = toKhmerDigits(val);
+        obj[h] = val;
       });
       dataRows.push(obj);
+    }
+
+    if (autoGroup) {
+      dataRows = groupDuplicateRecords(dataRows, headers);
+    } else {
+      dataRows = dataRows.map(obj => {
+        const newObj = {};
+        headers.forEach(h => { newObj[h] = toKhmerDigits(obj[h]); });
+        return newObj;
+      });
     }
 
     if (!dataRows.length) {
@@ -557,7 +683,7 @@
 
     // Automatically switch to Live Preview Mode (Record 1) so user immediately sees filled poster!
     setMode('preview');
-    alert(`Upload ជោគជ័យ! បញ្ចូលបាន ${dataRows.length} Records។ កំពុងបង្ហាញ Live Preview...`);
+    alert(`Upload ជោគជ័យ! បញ្ចូលបាន ${dataRows.length} Records (បង្រួមឈ្មោះដូចគ្នា)។ កំពុងបង្ហាញ Live Preview...`);
   }
 
   /** Smart placeholder auto-mapper */
