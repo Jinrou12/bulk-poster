@@ -78,6 +78,28 @@
           </div>
         </div>
 
+        <!-- Filter Section for Single vs Multiple Numbers -->
+        <div class="sidebar-section" id="sidebarFilterSection">
+          <h3><i data-lucide="filter"></i> Filter ស្រង់ឈ្មោះតាមលេខរៀង</h3>
+          <div class="side-filter-group">
+            <button class="btn-side-filter active" data-filter="all" id="btnSideFilterAll">
+              <i data-lucide="users"></i>
+              <span class="filter-label">ទាំងអស់</span>
+              <span class="badge" id="sideCountAll">0</span>
+            </button>
+            <button class="btn-side-filter" data-filter="single" id="btnSideFilterSingle">
+              <i data-lucide="user-check"></i>
+              <span class="filter-label">ឈ្មោះ ១ មានលេខរៀង ១</span>
+              <span class="badge badge-single" id="sideCountSingle">0</span>
+            </button>
+            <button class="btn-side-filter" data-filter="multiple" id="btnSideFilterMultiple">
+              <i data-lucide="layers"></i>
+              <span class="filter-label">ឈ្មោះ តែ ១ មានលេខរៀងច្រើន</span>
+              <span class="badge badge-multiple" id="sideCountMultiple">0</span>
+            </button>
+          </div>
+        </div>
+
         <!-- Excel Merge Fields Dropdown Bar -->
         <div class="sidebar-section" id="mergeFieldsSection">
           <div class="section-title-badge">
@@ -117,9 +139,9 @@
             <div class="record-filter-wrap">
               <i data-lucide="filter" class="filter-icon"></i>
               <select id="filterTicketType" class="select-input select-filter" title="Filter តាមចំនួនលេខរៀង/ឆ្នោត">
-                <option value="all">🌐 ទាំងអស់ (All)</option>
-                <option value="single">1️⃣ លេខរៀង ១ (Single)</option>
-                <option value="multiple">🔢 លេខរៀងច្រើន (Multiple)</option>
+                <option value="all">🌐 ទិន្នន័យទាំងអស់ (All)</option>
+                <option value="single">👤1️⃣ ឈ្មោះ ១ មានលេខរៀង ១</option>
+                <option value="multiple">👤🔢 ឈ្មោះ តែ ១ មានលេខរៀងច្រើន</option>
               </select>
               <span id="filteredCountBadge" class="badge-filter">0/0</span>
             </div>
@@ -273,8 +295,8 @@
         <div class="data-modal-toolbar">
           <div class="filter-tabs">
             <button class="filter-tab active" data-filter="all">🌐 ទាំងអស់ (<span id="modalCountAll">0</span>)</button>
-            <button class="filter-tab" data-filter="single">1️⃣ លេខរៀង ១ (<span id="modalCountSingle">0</span>)</button>
-            <button class="filter-tab" data-filter="multiple">🔢 លេខរៀងច្រើន (<span id="modalCountMultiple">0</span>)</button>
+            <button class="filter-tab" data-filter="single">👤1️⃣ ឈ្មោះ ១ មានលេខរៀង ១ (<span id="modalCountSingle">0</span>)</button>
+            <button class="filter-tab" data-filter="multiple">👤🔢 ឈ្មោះ តែ ១ មានលេខរៀងច្រើន (<span id="modalCountMultiple">0</span>)</button>
           </div>
           <div class="modal-search-box">
             <i data-lucide="search"></i>

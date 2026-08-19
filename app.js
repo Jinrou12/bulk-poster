@@ -104,6 +104,9 @@
     modalCountAll:        document.getElementById('modalCountAll'),
     modalCountSingle:     document.getElementById('modalCountSingle'),
     modalCountMultiple:   document.getElementById('modalCountMultiple'),
+    sideCountAll:         document.getElementById('sideCountAll'),
+    sideCountSingle:      document.getElementById('sideCountSingle'),
+    sideCountMultiple:    document.getElementById('sideCountMultiple'),
     modalSearchInput:     document.getElementById('modalSearchInput'),
     btnExportFilteredZip: document.getElementById('btnExportFilteredZip'),
 
@@ -208,21 +211,18 @@
     dom.btnCloseDataModal2.addEventListener('click',  () => dom.dataModal.classList.add('hidden'));
     dom.btnCancelExport.addEventListener('click',     () => { state.cancelExport = true; dom.exportModal.classList.add('hidden'); });
 
-    // Filter by Ticket Count Dropdown (1 vs Multiple)
+    // Sidebar Filter Buttons
+    document.querySelectorAll('.btn-side-filter').forEach(btn => {
+      btn.addEventListener('click', e => {
+        const filterType = e.currentTarget.getAttribute('data-filter') || 'all';
+        setTicketFilter(filterType);
+      });
+    });
+
+    // Filter by Ticket Count Dropdown in Toolbar
     if (dom.filterTicketType) {
       dom.filterTicketType.addEventListener('change', e => {
-        state.ticketFilter = e.target.value;
-        updateRecordDropdown();
-        const filtered = getFilteredRecords(state.ticketFilter);
-        if (filtered.length > 0) {
-          const hasCurrent = filtered.some(f => f.originalIndex === state.currentRecordIndex);
-          if (!hasCurrent) {
-            state.currentRecordIndex = filtered[0].originalIndex;
-          }
-          setMode('preview');
-        } else {
-          renderCanvas();
-        }
+        setTicketFilter(e.target.value);
       });
     }
 
@@ -245,10 +245,8 @@
     // Modal Filter Tab Buttons
     document.querySelectorAll('.filter-tab').forEach(tab => {
       tab.addEventListener('click', e => {
-        document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
-        e.currentTarget.classList.add('active');
-        state.modalTabFilter = e.currentTarget.getAttribute('data-filter') || 'all';
-        renderExcelTableModal();
+        const filterType = e.currentTarget.getAttribute('data-filter') || 'all';
+        setTicketFilter(filterType);
       });
     });
 
@@ -1069,36 +1067,43 @@
   // Record Navigation & Filtering (1 Ticket vs Multiple Tickets)
   // ──────────────────────────────────────────────────────────────────────────
 
-  /** Count total ticket numbers in a record row */
-  function getRecordTicketCount(row, headers) {
-    if (!row) return 1;
-    if (row._ticketCount && typeof row._ticketCount === 'number' && row._ticketCount > 0) {
-      return row._ticketCount;
-    }
+  /** Map of person name -> total ticket count across the whole dataset */
+  function buildPersonTicketCountsMap() {
+    const countsMap = new Map();
+    if (!state.excelRows || !state.excelRows.length) return countsMap;
 
-    const currentHeaders = (headers && headers.length) ? headers : state.excelHeaders;
-    
-    // Make sure nameHeader and ticketHeader don't collide
+    const currentHeaders = state.excelHeaders;
     const nameHeader = currentHeaders.find(h => /ឈ្មោះ|name|owner|ម្ចាស់/i.test(h)) || currentHeaders[1] || currentHeaders[0];
     let ticketHeader = currentHeaders.find(h => h !== nameHeader && /លេខ|ឆ្នោត|ស្លាក|រៀង|no|number|code|id/i.test(h));
     if (!ticketHeader) {
       ticketHeader = currentHeaders.find(h => h !== nameHeader) || (currentHeaders[0] !== nameHeader ? currentHeaders[0] : currentHeaders[1]);
     }
 
-    const val = ticketHeader ? String(row[ticketHeader] ?? '').trim() : '';
+    state.excelRows.forEach(row => {
+      const rawName = normalizeName(row[nameHeader]);
+      if (!rawName) return;
+      const key = rawName.toLowerCase();
+      
+      const val = ticketHeader ? String(row[ticketHeader] ?? '').trim() : '';
+      const rowTickets = parseTicketCountFromValue(val);
+      
+      countsMap.set(key, (countsMap.get(key) || 0) + rowTickets);
+    });
+
+    return countsMap;
+  }
+
+  function parseTicketCountFromValue(val) {
     if (!val) return 1;
 
-    // Convert Khmer digits to latin digits & strip zero-width chars
     const latin = toLatinDigits(val)
       .replace(/[\u200B-\u200D\uFEFF\u00AD]/g, '')
       .replace(/[\s\u00A0\u1680\u2000-\u200A\u3000]+/g, ' ')
       .trim();
 
-    // Extract all integer numbers in the string
     const numbers = latin.match(/\d+/g);
     if (!numbers || numbers.length === 0) return 1;
 
-    // Check if string contains a range indicator (hyphen, dash, 'ដល់', 'to')
     const hasRangeSymbol = /[\-\u2010-\u2015\u2212]|ដល់|\bto\b/i.test(latin);
 
     if (hasRangeSymbol && numbers.length >= 2) {
@@ -1109,7 +1114,6 @@
       }
     }
 
-    // Check if string contains multiple individual numbers
     if (numbers.length > 1) {
       return numbers.length;
     }
@@ -1117,14 +1121,38 @@
     return 1;
   }
 
+  /** Count total ticket numbers in a record row */
+  function getRecordTicketCount(row, headers) {
+    if (!row) return 1;
+    if (row._ticketCount && typeof row._ticketCount === 'number' && row._ticketCount > 0) {
+      return row._ticketCount;
+    }
+
+    const currentHeaders = (headers && headers.length) ? headers : state.excelHeaders;
+    const nameHeader = currentHeaders.find(h => /ឈ្មោះ|name|owner|ម្ចាស់/i.test(h)) || currentHeaders[1] || currentHeaders[0];
+    let ticketHeader = currentHeaders.find(h => h !== nameHeader && /លេខ|ឆ្នោត|ស្លាក|រៀង|no|number|code|id/i.test(h));
+    if (!ticketHeader) {
+      ticketHeader = currentHeaders.find(h => h !== nameHeader) || (currentHeaders[0] !== nameHeader ? currentHeaders[0] : currentHeaders[1]);
+    }
+
+    const val = ticketHeader ? String(row[ticketHeader] ?? '').trim() : '';
+    return parseTicketCountFromValue(val);
+  }
+
   /** Filter records according to active filter type ('all' | 'single' | 'multiple') */
   function getFilteredRecords(filterType) {
     const fType = filterType || state.ticketFilter || 'all';
+    const countsMap = buildPersonTicketCountsMap();
+    const nameHeader = state.excelHeaders.find(h => /ឈ្មោះ|name|owner|ម្ចាស់/i.test(h)) || state.excelHeaders[1] || state.excelHeaders[0];
+
     const list = [];
     state.excelRows.forEach((row, originalIndex) => {
-      const count = getRecordTicketCount(row, state.excelHeaders);
-      const isSingle = count === 1;
-      const isMultiple = count > 1;
+      const rawName = normalizeName(row[nameHeader]);
+      const key = rawName ? rawName.toLowerCase() : `row_${originalIndex}`;
+      
+      const personTotalTickets = countsMap.get(key) || getRecordTicketCount(row, state.excelHeaders);
+      const isSingle = personTotalTickets === 1;
+      const isMultiple = personTotalTickets > 1;
 
       if (fType === 'single' && !isSingle) return;
       if (fType === 'multiple' && !isMultiple) return;
@@ -1132,11 +1160,53 @@
       list.push({
         row,
         originalIndex,
-        ticketCount: count,
+        personTotalTickets,
+        ticketCount: getRecordTicketCount(row, state.excelHeaders),
+        isSingle,
         isMultiple
       });
     });
     return list;
+  }
+
+  /** Sync active ticket filter across sidebar buttons, toolbar dropdown, and modal tabs */
+  function setTicketFilter(filterType) {
+    state.ticketFilter = filterType;
+    state.modalTabFilter = filterType;
+
+    if (dom.filterTicketType) dom.filterTicketType.value = filterType;
+
+    // Update Side Filter Buttons
+    document.querySelectorAll('.btn-side-filter').forEach(btn => {
+      if (btn.getAttribute('data-filter') === filterType) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+
+    // Update Modal Filter Tabs
+    document.querySelectorAll('.filter-tab').forEach(tab => {
+      if (tab.getAttribute('data-filter') === filterType) {
+        tab.classList.add('active');
+      } else {
+        tab.classList.remove('active');
+      }
+    });
+
+    updateRecordDropdown();
+    renderExcelTableModal();
+
+    const filtered = getFilteredRecords(state.ticketFilter);
+    if (filtered.length > 0) {
+      const hasCurrent = filtered.some(f => f.originalIndex === state.currentRecordIndex);
+      if (!hasCurrent) {
+        state.currentRecordIndex = filtered[0].originalIndex;
+      }
+      setMode('preview');
+    } else {
+      renderCanvas();
+    }
   }
 
   function updateRecordDropdown() {
@@ -1153,7 +1223,7 @@
       const nameVal = String(item.row[nameHeader] || Object.values(item.row)[0] || `Record #${item.originalIndex + 1}`);
       const ticketVal = ticketHeader ? String(item.row[ticketHeader] || '') : '';
       
-      const typeLabel = item.ticketCount > 1 ? `[🔢 ${toKhmerDigits(item.ticketCount)} លេខ]` : '[1️⃣ 1 លេខ]';
+      const typeLabel = item.personTotalTickets > 1 ? `[👤🔢 ${toKhmerDigits(item.personTotalTickets)} លេខ]` : '[👤1️⃣ 1 លេខ]';
       opt.textContent = `${toKhmerDigits(i + 1)}. ${nameVal} (${ticketVal || 'គ្មានលេខ'}) ${typeLabel}`;
       
       if (item.originalIndex === state.currentRecordIndex) {
@@ -1394,14 +1464,22 @@
       if (dom.modalCountAll) dom.modalCountAll.textContent = '0';
       if (dom.modalCountSingle) dom.modalCountSingle.textContent = '0';
       if (dom.modalCountMultiple) dom.modalCountMultiple.textContent = '0';
+      if (dom.sideCountAll) dom.sideCountAll.textContent = '0';
+      if (dom.sideCountSingle) dom.sideCountSingle.textContent = '0';
+      if (dom.sideCountMultiple) dom.sideCountMultiple.textContent = '0';
       return;
     }
 
-    // Calculate total counts for filter tabs
+    // Calculate total counts for filter tabs & sidebar badges using person total tickets
     let singleCount = 0;
     let multiCount = 0;
-    state.excelRows.forEach(r => {
-      const tc = getRecordTicketCount(r, state.excelHeaders);
+    const countsMap = buildPersonTicketCountsMap();
+    const nameHeader = state.excelHeaders.find(h => /ឈ្មោះ|name|owner|ម្ចាស់/i.test(h)) || state.excelHeaders[1] || state.excelHeaders[0];
+
+    state.excelRows.forEach((r, i) => {
+      const rawName = normalizeName(r[nameHeader]);
+      const key = rawName ? rawName.toLowerCase() : `row_${i}`;
+      const tc = countsMap.get(key) || getRecordTicketCount(r, state.excelHeaders);
       if (tc > 1) multiCount++;
       else singleCount++;
     });
@@ -1410,13 +1488,19 @@
     if (dom.modalCountSingle) dom.modalCountSingle.textContent = toKhmerDigits(singleCount);
     if (dom.modalCountMultiple) dom.modalCountMultiple.textContent = toKhmerDigits(multiCount);
 
+    if (dom.sideCountAll) dom.sideCountAll.textContent = toKhmerDigits(state.excelRows.length);
+    if (dom.sideCountSingle) dom.sideCountSingle.textContent = toKhmerDigits(singleCount);
+    if (dom.sideCountMultiple) dom.sideCountMultiple.textContent = toKhmerDigits(multiCount);
+
     const query = (state.modalSearchQuery || '').toLowerCase().trim();
 
     // Filter rows for modal view based on tab and search
     const visibleRows = [];
     state.excelRows.forEach((row, i) => {
-      const ticketCount = getRecordTicketCount(row, state.excelHeaders);
-      const isMulti = ticketCount > 1;
+      const rawName = normalizeName(row[nameHeader]);
+      const key = rawName ? rawName.toLowerCase() : `row_${i}`;
+      const personTotalTickets = countsMap.get(key) || getRecordTicketCount(row, state.excelHeaders);
+      const isMulti = personTotalTickets > 1;
 
       // Tab filter
       if (state.modalTabFilter === 'single' && isMulti) return;
@@ -1428,7 +1512,7 @@
         if (!rowText.includes(query)) return;
       }
 
-      visibleRows.push({ row, originalIndex: i, ticketCount, isMulti });
+      visibleRows.push({ row, originalIndex: i, personTotalTickets, isMulti });
     });
 
     if (!visibleRows.length) {
@@ -1442,7 +1526,7 @@
 
     visibleRows.forEach((item) => {
       const typeBadge = item.isMulti
-        ? `<span class="badge-type badge-multiple"><i data-lucide="layers" style="width:12px;height:12px"></i> ${toKhmerDigits(item.ticketCount)} លេខ</span>`
+        ? `<span class="badge-type badge-multiple"><i data-lucide="layers" style="width:12px;height:12px"></i> ${toKhmerDigits(item.personTotalTickets)} លេខ</span>`
         : `<span class="badge-type badge-single"><i data-lucide="check-circle-2" style="width:12px;height:12px"></i> 1 លេខ</span>`;
 
       const isCurrent = item.originalIndex === state.currentRecordIndex;
