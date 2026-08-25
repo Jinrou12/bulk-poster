@@ -56,6 +56,7 @@
     templateUploadInput:  document.getElementById('templateUploadInput'),
     excelUploadInput:     document.getElementById('excelUploadInput'),
     btnLoadSample:        document.getElementById('btnLoadSample'),
+    btnClearState:        document.getElementById('btnClearState'),
     btnBatchExport:       document.getElementById('btnBatchExport'),
 
     btnAddText:           document.getElementById('btnAddText'),
@@ -119,12 +120,12 @@
   // ──────────────────────────────────────────────────────────────────────────
   // Initialisation
   // ──────────────────────────────────────────────────────────────────────────
-  function init() {
+  async function init() {
     state.canvas = dom.canvas;
     state.ctx    = state.canvas.getContext('2d');
 
     setupEventListeners();
-    loadSampleData();
+    await loadSavedStateOrSample();
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -133,7 +134,21 @@
   function setupEventListeners() {
     dom.templateUploadInput.addEventListener('change', handleTemplateUpload);
     dom.excelUploadInput.addEventListener('change', handleExcelUpload);
-    dom.btnLoadSample.addEventListener('click', loadSampleData);
+    dom.btnLoadSample.addEventListener('click', () => {
+      if (confirm('តើអ្នកចង់ទាញយកទិន្នន័យពុម្ពគំរូ (Sample Data) មកប្រើប្រាស់មែនទេ?')) {
+        loadSampleData();
+        scheduleSaveState();
+      }
+    });
+    if (dom.btnClearState) {
+      dom.btnClearState.addEventListener('click', async () => {
+        if (confirm('តើអ្នកប្រាកដជាចង់សម្អាតទិន្នន័យដែលបានរក្សាទុក (Reset Workspace) ទាំងអស់មែនទេ?')) {
+          await clearDBState();
+          loadSampleData();
+          alert('សម្អាតទិន្នន័យបានជោគជ័យ! ទិន្នន័យត្រូវបាន Reset មកទម្រង់ដើមវិញ។');
+        }
+      });
+    }
     dom.btnBatchExport.addEventListener('click', handleBatchExport);
 
     dom.btnAddText.addEventListener('click', () => addTextElement('អត្ថបទថ្មី'));
@@ -157,6 +172,7 @@
         updateRecordDropdown();
         renderExcelTableModal();
         renderCanvas();
+        scheduleSaveState();
         alert(`បង្រួមទិន្នន័យបានជោគជ័យ! (ពី ${countBefore} Records មកនៅ ${countAfter} Records)`);
       });
     }
@@ -258,6 +274,180 @@
         renderOverlay();
       }
     });
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Storage Persistence Engine (IndexedDB + localStorage Fallback)
+  // ──────────────────────────────────────────────────────────────────────────
+  const DB_NAME = 'BulkPosterDB';
+  const DB_VERSION = 1;
+  const STORE_NAME = 'poster_state';
+
+  function openDB() {
+    return new Promise((resolve, reject) => {
+      if (!window.indexedDB) {
+        reject(new Error('IndexedDB not supported'));
+        return;
+      }
+      const req = window.indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = e => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME);
+        }
+      };
+      req.onsuccess = e => resolve(e.target.result);
+      req.onerror = e => reject(e.target.error);
+    });
+  }
+
+  async function saveStateToDB(data) {
+    try {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.put(data, 'current_workspace');
+        req.onsuccess = () => resolve(true);
+        req.onerror = e => reject(e.target.error);
+      });
+    } catch (err) {
+      console.warn('[Storage] Fallback to localStorage:', err);
+      try {
+        localStorage.setItem('bulk_poster_saved_state', JSON.stringify(data));
+      } catch (e) {
+        console.error('[Storage] LocalStorage quota exceeded:', e);
+      }
+    }
+  }
+
+  async function loadStateFromDB() {
+    try {
+      const db = await openDB();
+      return new Promise((resolve) => {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.get('current_workspace');
+        req.onsuccess = e => resolve(e.target.result || null);
+        req.onerror = () => resolve(null);
+      });
+    } catch (err) {
+      console.warn('[Storage] Reading fallback from localStorage:', err);
+      try {
+        const json = localStorage.getItem('bulk_poster_saved_state');
+        return json ? JSON.parse(json) : null;
+      } catch (e) {
+        return null;
+      }
+    }
+  }
+
+  async function clearDBState() {
+    try {
+      const db = await openDB();
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).delete('current_workspace');
+    } catch (e) {}
+    try {
+      localStorage.removeItem('bulk_poster_saved_state');
+    } catch (e) {}
+  }
+
+  function getImageDataURL(img) {
+    if (!img) return null;
+    if (img.src && img.src.startsWith('data:image/')) {
+      return img.src;
+    }
+    try {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth || img.width || 1200;
+      c.height = img.naturalHeight || img.height || 630;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      return c.toDataURL('image/png');
+    } catch (e) {
+      console.warn('[Storage] Could not serialize image:', e);
+      return null;
+    }
+  }
+
+  let saveTimer = null;
+  function scheduleSaveState() {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(async () => {
+      try {
+        const bgDataURL = getImageDataURL(state.bgImage);
+        const dataToSave = {
+          bgImageSrc: bgDataURL,
+          templateWidth: state.templateWidth,
+          templateHeight: state.templateHeight,
+          elements: state.elements,
+          excelHeaders: state.excelHeaders,
+          excelRows: state.excelRows,
+          ticketFilter: state.ticketFilter,
+          currentRecordIndex: state.currentRecordIndex,
+          timestamp: Date.now()
+        };
+        await saveStateToDB(dataToSave);
+        console.log('[Storage] Saved workspace automatically');
+      } catch (err) {
+        console.error('[Storage] Save state failed:', err);
+      }
+    }, 300);
+  }
+
+  async function loadSavedStateOrSample() {
+    const saved = await loadStateFromDB();
+    if (saved && (saved.bgImageSrc || (saved.elements && saved.elements.length > 0) || (saved.excelRows && saved.excelRows.length > 0))) {
+      try {
+        state.templateWidth = saved.templateWidth || 1200;
+        state.templateHeight = saved.templateHeight || 630;
+        state.elements = saved.elements || [];
+        state.excelHeaders = saved.excelHeaders || [];
+        state.excelRows = saved.excelRows || [];
+        state.ticketFilter = saved.ticketFilter || 'all';
+        state.currentRecordIndex = saved.currentRecordIndex || 0;
+
+        resizeCanvas(state.templateWidth, state.templateHeight);
+
+        if (saved.bgImageSrc) {
+          const img = new Image();
+          img.onload = () => {
+            state.bgImage = img;
+            finishStateRestoration();
+          };
+          img.onerror = () => {
+            finishStateRestoration();
+          };
+          img.src = saved.bgImageSrc;
+        } else {
+          finishStateRestoration();
+        }
+        return true;
+      } catch (e) {
+        console.error('[Storage] Restore failed, loading sample:', e);
+      }
+    }
+
+    loadSampleData();
+    return false;
+  }
+
+  function finishStateRestoration() {
+    if (state.excelRows.length > 0) {
+      dom.excelStatusBadge.textContent = `${state.excelRows.length} Records (Restored)`;
+      dom.excelStatusBadge.classList.add('active');
+    } else {
+      dom.excelStatusBadge.textContent = 'គ្មានទិន្នន័យ';
+      dom.excelStatusBadge.classList.remove('active');
+    }
+
+    updateMergeFieldsList();
+    updateRecordDropdown();
+    renderExcelTableModal();
+    renderLayersList();
+    renderCanvas();
+    fitZoomToScreen();
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -402,6 +592,7 @@
         resizeCanvas(state.templateWidth, state.templateHeight);
         renderCanvas();
         fitZoomToScreen();
+        scheduleSaveState();
       };
       img.src = ev.target.result;
     };
@@ -813,6 +1004,7 @@
 
     // Automatically switch to Live Preview Mode (Record 1) so user immediately sees filled poster!
     setMode('preview');
+    scheduleSaveState();
 
     let singleCount = 0;
     let multiCount = 0;
@@ -923,6 +1115,7 @@
     };
     state.elements.push(el);
     selectElement(el.id);
+    scheduleSaveState();
   }
 
   function addPhotoFrameElement() {
@@ -937,6 +1130,7 @@
     };
     state.elements.push(el);
     selectElement(el.id);
+    scheduleSaveState();
   }
 
   function selectElement(id) {
@@ -953,6 +1147,7 @@
     updateInspectorForm();
     renderLayersList();
     renderCanvas();
+    scheduleSaveState();
   }
 
   function moveLayer(dir) {
@@ -964,6 +1159,7 @@
       [state.elements[i], state.elements[j]] = [state.elements[j], state.elements[i]];
       renderLayersList();
       renderCanvas();
+      scheduleSaveState();
     }
   }
 
@@ -1025,6 +1221,7 @@
     if (!isNaN(ny)) el.y = ny;
 
     renderCanvas();
+    scheduleSaveState();
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -1441,6 +1638,7 @@
       state.dragState.isDragging = false;
       document.removeEventListener('mousemove', move);
       document.removeEventListener('mouseup',   up);
+      scheduleSaveState();
     };
 
     document.addEventListener('mousemove', move);
@@ -1472,6 +1670,7 @@
       state.dragState.isResizing = false;
       document.removeEventListener('mousemove', move);
       document.removeEventListener('mouseup',   up);
+      scheduleSaveState();
     };
 
     document.addEventListener('mousemove', move);
