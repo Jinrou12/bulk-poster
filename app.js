@@ -587,72 +587,72 @@
     return String(val).replace(/[០-៩]/g, ch => map[ch] || ch);
   }
 
-  /** Format ticket numbers e.g. ["1", "2", "3", "4"] -> "១-៤" or ["65", ..., "88"] -> "៦៥-៨៨" */
+  /** Format ticket numbers e.g. ["54", "124"] -> "៥៤, ១២៤" or ["65", ..., "88"] -> "៦៥ - ៨៨" */
   function formatTicketNumbers(ticketArr) {
     if (!ticketArr || !ticketArr.length) return '';
     
-    const cleanArr = [];
+    const cleanNums = new Set();
+    const nonNumeric = [];
+
     ticketArr.forEach(tStr => {
-      const latinStr = toLatinDigits(tStr);
-      const parts = latinStr.split(/[,;/]+/).map(s => s.trim()).filter(Boolean);
+      if (tStr === null || tStr === undefined) return;
+      const latinStr = toLatinDigits(String(tStr));
+      const parts = latinStr.split(/[,;\/\n]+/).map(s => s.trim()).filter(Boolean);
+      
       parts.forEach(p => {
-        if (!cleanArr.includes(p)) cleanArr.push(p);
-      });
-    });
-
-    if (!cleanArr.length) return '';
-    if (cleanArr.length === 1) return toKhmerDigits(cleanArr[0]);
-
-    const numObjects = cleanArr.map(t => {
-      const match = t.match(/\d+/);
-      return {
-        original: t,
-        num: match ? parseInt(match[0], 10) : null
-      };
-    });
-
-    const allNumeric = numObjects.every(o => o.num !== null);
-
-    if (allNumeric) {
-      numObjects.sort((a, b) => a.num - b.num);
-
-      const uniqueNums = [];
-      numObjects.forEach(o => {
-        if (!uniqueNums.includes(o.num)) uniqueNums.push(o.num);
-      });
-
-      const ranges = [];
-      let start = uniqueNums[0];
-      let prev = uniqueNums[0];
-
-      for (let i = 1; i < uniqueNums.length; i++) {
-        const curr = uniqueNums[i];
-        if (curr === prev + 1) {
-          prev = curr;
-        } else {
-          if (start === prev) {
-            ranges.push(toKhmerDigits(start));
-          } else {
-            ranges.push(`${toKhmerDigits(start)}-${toKhmerDigits(prev)}`);
+        // Check if part is a range like "54 - 56" or "54-56"
+        const rangeMatch = p.match(/^(\d+)\s*[\-\u2013\u2014]\s*(\d+)$/);
+        if (rangeMatch) {
+          const startNum = parseInt(rangeMatch[1], 10);
+          const endNum = parseInt(rangeMatch[2], 10);
+          const min = Math.min(startNum, endNum);
+          const max = Math.max(startNum, endNum);
+          for (let n = min; n <= max; n++) {
+            cleanNums.add(n);
           }
-          start = curr;
-          prev = curr;
+        } else if (/^\d+$/.test(p)) {
+          cleanNums.add(parseInt(p, 10));
+        } else {
+          nonNumeric.push(p);
         }
-      }
+      });
+    });
 
-      if (start === prev) {
-        ranges.push(toKhmerDigits(start));
+    if (cleanNums.size === 0 && nonNumeric.length === 0) return '';
+    if (cleanNums.size === 0) return nonNumeric.map(toKhmerDigits).join(', ');
+
+    const sortedNums = Array.from(cleanNums).sort((a, b) => a - b);
+
+    const ranges = [];
+    let start = sortedNums[0];
+    let prev = sortedNums[0];
+
+    for (let i = 1; i < sortedNums.length; i++) {
+      const curr = sortedNums[i];
+      if (curr === prev + 1) {
+        prev = curr;
       } else {
-        ranges.push(`${toKhmerDigits(start)}-${toKhmerDigits(prev)}`);
+        if (start === prev) {
+          ranges.push(toKhmerDigits(start));
+        } else {
+          ranges.push(`${toKhmerDigits(start)} - ${toKhmerDigits(prev)}`);
+        }
+        start = curr;
+        prev = curr;
       }
-
-      if (ranges.length === 2 && uniqueNums.length === 2) {
-        return ranges.join(' - ');
-      }
-      return ranges.join(', ');
     }
 
-    return cleanArr.map(toKhmerDigits).join(' - ');
+    if (start === prev) {
+      ranges.push(toKhmerDigits(start));
+    } else {
+      ranges.push(`${toKhmerDigits(start)} - ${toKhmerDigits(prev)}`);
+    }
+
+    if (nonNumeric.length > 0) {
+      ranges.push(...nonNumeric.map(toKhmerDigits));
+    }
+
+    return ranges.join(', ');
   }
 
   /** Normalize a name string for comparison: strip zero-width chars, collapse whitespace, NFC normalize */
