@@ -1436,7 +1436,12 @@
 
   function updateRecordDropdown() {
     dom.recordDropdown.innerHTML = '<option value="template">-- Mode: រៀបចំ Template (ទម្រង់ដើម) --</option>';
-    const filteredList = getFilteredRecords(state.ticketFilter);
+    let filteredList = getFilteredRecords(state.ticketFilter);
+
+    // Only include rows that are checked / selected in state.selectedRowIndices
+    if (state.selectedRowIndices) {
+      filteredList = filteredList.filter(item => state.selectedRowIndices.has(item.originalIndex));
+    }
 
     const nameHeader = state.excelHeaders.find(h => /ឈ្មោះ|name|owner|ម្ចាស់/i.test(h)) || state.excelHeaders[1] || state.excelHeaders[0];
     const ticketHeader = state.excelHeaders.find(h => /លេខ|ឆ្នោត|ស្លាក|រៀង|no|number|code|id/i.test(h)) || state.excelHeaders[0];
@@ -1456,6 +1461,14 @@
       }
       dom.recordDropdown.appendChild(opt);
     });
+
+    // Ensure currentRecordIndex is valid among selected list
+    if (filteredList.length > 0 && !filteredList.some(item => item.originalIndex === state.currentRecordIndex)) {
+      state.currentRecordIndex = filteredList[0].originalIndex;
+      if (state.mode === 'preview') {
+        renderCanvas();
+      }
+    }
 
     // Update filter badge text
     if (dom.filteredCountBadge) {
@@ -1478,7 +1491,10 @@
   }
 
   function navigateRecord(dir) {
-    const filteredList = getFilteredRecords(state.ticketFilter);
+    let filteredList = getFilteredRecords(state.ticketFilter);
+    if (state.selectedRowIndices) {
+      filteredList = filteredList.filter(item => state.selectedRowIndices.has(item.originalIndex));
+    }
     if (!filteredList.length) return;
 
     let currentPos = filteredList.findIndex(item => item.originalIndex === state.currentRecordIndex);
@@ -1874,6 +1890,7 @@
         }
       });
     });
+    updateRecordDropdown();
   }
 
   // ──────────────────────────────────────────────────────────────────────────
