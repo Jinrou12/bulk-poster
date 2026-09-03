@@ -29,6 +29,7 @@
 
     excelHeaders: [],
     excelRows: [],
+    selectedRowIndices: null, // null or Set of selected row indices
 
     cancelExport: false,
 
@@ -1692,52 +1693,41 @@
       if (dom.sideCountAll) dom.sideCountAll.textContent = '0';
       if (dom.sideCountSingle) dom.sideCountSingle.textContent = '0';
       if (dom.sideCountMultiple) dom.sideCountMultiple.textContent = '0';
+      const badge = document.getElementById('selectedCountBadge');
+      if (badge) badge.textContent = 'ជ្រើសរើស 0 / 0';
       return;
     }
 
-    // Calculate total counts for filter tabs & sidebar badges using person total tickets
-    let singleCount = 0;
-    let multiCount = 0;
-    const countsMap = buildPersonTicketCountsMap();
-    const nameHeader = state.excelHeaders.find(h => /ឈ្មោះ|name|owner|ម្ចាស់/i.test(h)) || state.excelHeaders[1] || state.excelHeaders[0];
-
-    state.excelRows.forEach((r, i) => {
-      const rawName = normalizeName(r[nameHeader]);
-      const key = rawName ? rawName.toLowerCase() : `row_${i}`;
-      const tc = countsMap.get(key) || getRecordTicketCount(r, state.excelHeaders);
-      if (tc > 1) multiCount++;
-      else singleCount++;
-    });
+    // Initialize selectedRowIndices if null
+    if (!state.selectedRowIndices) {
+      state.selectedRowIndices = new Set(state.excelRows.map((_, i) => i));
+    }
 
     if (dom.modalCountAll) dom.modalCountAll.textContent = toKhmerDigits(state.excelRows.length);
-    if (dom.modalCountSingle) dom.modalCountSingle.textContent = toKhmerDigits(singleCount);
-    if (dom.modalCountMultiple) dom.modalCountMultiple.textContent = toKhmerDigits(multiCount);
-
     if (dom.sideCountAll) dom.sideCountAll.textContent = toKhmerDigits(state.excelRows.length);
-    if (dom.sideCountSingle) dom.sideCountSingle.textContent = toKhmerDigits(singleCount);
-    if (dom.sideCountMultiple) dom.sideCountMultiple.textContent = toKhmerDigits(multiCount);
+
+    // Update selected count badge in toolbar
+    const selectedBadge = document.getElementById('selectedCountBadge');
+    if (selectedBadge) {
+      selectedBadge.textContent = `ជ្រើសរើស ${toKhmerDigits(state.selectedRowIndices.size)} / ${toKhmerDigits(state.excelRows.length)}`;
+    }
+
+    // Sync master select all checkbox
+    const masterCb = document.getElementById('modalMasterSelectAll');
+    if (masterCb) {
+      masterCb.checked = state.selectedRowIndices.size === state.excelRows.length && state.excelRows.length > 0;
+    }
 
     const query = (state.modalSearchQuery || '').toLowerCase().trim();
 
-    // Filter rows for modal view based on tab and search
+    // Filter rows for modal view based on search
     const visibleRows = [];
     state.excelRows.forEach((row, i) => {
-      const rawName = normalizeName(row[nameHeader]);
-      const key = rawName ? rawName.toLowerCase() : `row_${i}`;
-      const personTotalTickets = countsMap.get(key) || getRecordTicketCount(row, state.excelHeaders);
-      const isMulti = personTotalTickets > 1;
-
-      // Tab filter
-      if (state.modalTabFilter === 'single' && isMulti) return;
-      if (state.modalTabFilter === 'multiple' && !isMulti) return;
-
-      // Search query filter
       if (query) {
         const rowText = Object.values(row).join(' ').toLowerCase();
         if (!rowText.includes(query)) return;
       }
-
-      visibleRows.push({ row, originalIndex: i, personTotalTickets, isMulti });
+      visibleRows.push({ row, originalIndex: i });
     });
 
     if (!visibleRows.length) {
@@ -1745,19 +1735,23 @@
       return;
     }
 
-    let html = '<table class="data-table"><thead><tr><th>#</th><th>ប្រភេទ</th>';
+    const allVisibleChecked = visibleRows.every(v => state.selectedRowIndices.has(v.originalIndex));
+
+    let html = '<table class="data-table"><thead><tr>';
+    html += `<th style="width:40px;text-align:center;"><input type="checkbox" id="modalTableThSelectAll" ${allVisibleChecked ? 'checked' : ''} style="accent-color:var(--gold);width:15px;height:15px;cursor:pointer;"></th>`;
+    html += '<th style="width:60px;">#</th>';
     state.excelHeaders.forEach(h => { html += `<th>${escapeHtml(h)}</th>`; });
-    html += '<th style="text-align:center;">សកម្មភាព</th></tr></thead><tbody>';
+    html += '<th style="text-align:center;width:100px;">សកម្មភាព</th></tr></thead><tbody>';
 
     visibleRows.forEach((item) => {
-      const typeBadge = item.isMulti
-        ? `<span class="badge-type badge-multiple"><i data-lucide="layers" style="width:12px;height:12px"></i> ${toKhmerDigits(item.personTotalTickets)} លេខ</span>`
-        : `<span class="badge-type badge-single"><i data-lucide="check-circle-2" style="width:12px;height:12px"></i> 1 លេខ</span>`;
-
       const isCurrent = item.originalIndex === state.currentRecordIndex;
-      html += `<tr style="${isCurrent ? 'background:rgba(217,119,6,0.18);' : ''}">
-        <td>${toKhmerDigits(item.originalIndex + 1)}</td>
-        <td>${typeBadge}</td>`;
+      const isChecked = state.selectedRowIndices.has(item.originalIndex);
+
+      html += `<tr style="${isCurrent ? 'background:rgba(217,119,6,0.18);' : (isChecked ? '' : 'opacity:0.5;')}">
+        <td style="text-align:center;">
+          <input type="checkbox" class="row-select-cb" data-index="${item.originalIndex}" ${isChecked ? 'checked' : ''} style="accent-color:var(--gold);width:15px;height:15px;cursor:pointer;">
+        </td>
+        <td>${toKhmerDigits(item.originalIndex + 1)}</td>`;
 
       state.excelHeaders.forEach(h => {
         html += `<td>${escapeHtml(String(item.row[h] ?? ''))}</td>`;
@@ -1774,6 +1768,79 @@
     dom.excelTableContainer.innerHTML = html;
     lucide.createIcons();
 
+    // Event handler: Master Select All checkbox
+    if (masterCb) {
+      masterCb.onchange = (e) => {
+        if (e.target.checked) {
+          state.excelRows.forEach((_, i) => state.selectedRowIndices.add(i));
+        } else {
+          state.selectedRowIndices.clear();
+        }
+        renderExcelTableModal();
+      };
+    }
+
+    // Event handler: Table Header TH Checkbox (Selects/Deselects visible rows)
+    const thCb = document.getElementById('modalTableThSelectAll');
+    if (thCb) {
+      thCb.onchange = (e) => {
+        if (e.target.checked) {
+          visibleRows.forEach(v => state.selectedRowIndices.add(v.originalIndex));
+        } else {
+          visibleRows.forEach(v => state.selectedRowIndices.delete(v.originalIndex));
+        }
+        renderExcelTableModal();
+      };
+    }
+
+    // Event handler: Individual Row Checkboxes
+    dom.excelTableContainer.querySelectorAll('.row-select-cb').forEach(cb => {
+      cb.onchange = (e) => {
+        const idx = parseInt(e.target.getAttribute('data-index'), 10);
+        if (e.target.checked) {
+          state.selectedRowIndices.add(idx);
+        } else {
+          state.selectedRowIndices.delete(idx);
+        }
+        renderExcelTableModal();
+      };
+    });
+
+    // Event handler: Apply Range Selection
+    const btnRange = document.getElementById('btnApplyRangeSelect');
+    const inputRange = document.getElementById('quickSelectRangeInput');
+    if (btnRange && inputRange) {
+      btnRange.onclick = () => {
+        const rawVal = inputRange.value.trim();
+        if (!rawVal) return;
+        const latinVal = toLatinDigits(rawVal);
+
+        const targetIndices = new Set();
+        const parts = latinVal.split(/[,;\s]+/).filter(Boolean);
+
+        parts.forEach(part => {
+          const rangeMatch = part.match(/^(\d+)[\-\u2013\u2014](\d+)$/);
+          if (rangeMatch) {
+            const start = parseInt(rangeMatch[1], 10) - 1;
+            const end   = parseInt(rangeMatch[2], 10) - 1;
+            const min   = Math.max(0, Math.min(start, end));
+            const max   = Math.min(state.excelRows.length - 1, Math.max(start, end));
+            for (let i = min; i <= max; i++) targetIndices.add(i);
+          } else if (/^\d+$/.test(part)) {
+            const idx = parseInt(part, 10) - 1;
+            if (idx >= 0 && idx < state.excelRows.length) targetIndices.add(idx);
+          }
+        });
+
+        if (targetIndices.size > 0) {
+          state.selectedRowIndices = targetIndices;
+          renderExcelTableModal();
+        } else {
+          alert('មិនអាចរកឃើញជួរ/លេខដែលអ្នកបានបញ្ចូលទេ!');
+        }
+      };
+    }
+
     // Click handler for Preview buttons in modal table
     dom.excelTableContainer.querySelectorAll('.btn-sm-preview').forEach(btn => {
       btn.addEventListener('click', e => {
@@ -1788,7 +1855,7 @@
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Batch Export → ZIP (Option to export all or filtered rows)
+  // Batch Export → ZIP (Option to export all or filtered/selected rows)
   // ──────────────────────────────────────────────────────────────────────────
   async function handleBatchExport(filteredOnly = false) {
     if (!state.excelRows.length) {
@@ -1796,8 +1863,18 @@
       return;
     }
 
-    let exportTargetRows = state.excelRows;
-    let zipFilename = 'Posters_Bulk_Export.zip';
+    // Initialize selectedRowIndices if null
+    if (!state.selectedRowIndices) {
+      state.selectedRowIndices = new Set(state.excelRows.map((_, i) => i));
+    }
+
+    if (state.selectedRowIndices.size === 0) {
+      alert('សូមជ្រើសរើសយ៉ាងហោចណាស់ 1 Record (Check) ដើមី្ប Export!');
+      return;
+    }
+
+    let exportTargetRows = [];
+    let zipFilename = 'Posters_Export.zip';
 
     if (filteredOnly) {
       const activeFilter = state.modalTabFilter !== 'all' ? state.modalTabFilter : state.ticketFilter;
@@ -1809,13 +1886,22 @@
         ? filteredItems.filter(item => Object.values(item.row).join(' ').toLowerCase().includes(query))
         : filteredItems;
 
-      exportTargetRows = finalItems.map(item => item.row);
-      const tag = activeFilter === 'single' ? 'Single_Tickets' : (activeFilter === 'multiple' ? 'Multiple_Tickets' : 'Filtered');
-      zipFilename = `Posters_${tag}_Export.zip`;
+      // Filter only SELECTED rows
+      const selectedItems = finalItems.filter(item => state.selectedRowIndices.has(item.originalIndex));
+      exportTargetRows = selectedItems.map(item => item.row);
+      const tag = activeFilter === 'single' ? 'Single' : (activeFilter === 'multiple' ? 'Multiple' : 'Selected');
+      zipFilename = `Posters_${tag}_Selected_Export.zip`;
+
+    } else {
+      // Export all SELECTED rows
+      exportTargetRows = state.excelRows.filter((_, i) => state.selectedRowIndices.has(i));
+      zipFilename = state.selectedRowIndices.size === state.excelRows.length
+        ? 'Posters_All_Export.zip'
+        : `Posters_${state.selectedRowIndices.size}_Selected_Export.zip`;
     }
 
     if (!exportTargetRows.length) {
-      alert('គ្មានទិន្នន័យសម្រាប់ Export តាម Filter នេះទេ!');
+      alert('គ្មានទិន្នន័យដែលបានជ្រើសរើសសម្រាប់ Export ទេ!');
       return;
     }
 
