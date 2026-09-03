@@ -373,7 +373,10 @@
       <div class="record-filter-wrap">
         <i data-lucide="filter" class="filter-icon"></i>
         <select id="filterTicketType" class="select-input select-filter" title="Filter records">
-          <option value="all">All Records</option>
+          <option value="all">🌐 ទិន្នន័យទាំងអស់ (All Records)</option>
+          <option value="selected">✅ ទិន្នន័យជ្រើសរើស (Selected Records)</option>
+          <option value="single">👤 សំបុត្រទោល (Single Ticket - 1)</option>
+          <option value="multiple">👥 សំបុត្រច្រើន (Multiple Tickets - 2+)</option>
         </select>
         <span id="filteredCountBadge" class="badge-filter">0/0</span>
       </div>
@@ -447,7 +450,16 @@
       <div class="data-modal-toolbar">
         <div class="filter-tabs">
           <button class="filter-tab active" data-filter="all">
-            🌐 All Records (<span id="modalCountAll">0</span>)
+            🌐 ទាំងអស់ (<span id="modalCountAll">0</span>)
+          </button>
+          <button class="filter-tab" data-filter="selected">
+            ✅ បានជ្រើសរើស (<span id="modalCountSelected">0</span>)
+          </button>
+          <button class="filter-tab" data-filter="single">
+            👤 សំបុត្រទោល (<span id="modalCountSingle">0</span>)
+          </button>
+          <button class="filter-tab" data-filter="multiple">
+            👥 សំបុត្រច្រើន (<span id="modalCountMultiple">0</span>)
           </button>
         </div>
         <div class="modal-search-box">

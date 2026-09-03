@@ -1363,7 +1363,7 @@
     return parseTicketCountFromValue(val);
   }
 
-  /** Filter records according to active filter type ('all' | 'single' | 'multiple') */
+  /** Filter records according to active filter type ('all' | 'selected' | 'single' | 'multiple') */
   function getFilteredRecords(filterType) {
     const fType = filterType || state.ticketFilter || 'all';
     const countsMap = buildPersonTicketCountsMap();
@@ -1378,6 +1378,7 @@
       const isSingle = personTotalTickets === 1;
       const isMultiple = personTotalTickets > 1;
 
+      if (fType === 'selected' && state.selectedRowIndices && !state.selectedRowIndices.has(originalIndex)) return;
       if (fType === 'single' && !isSingle) return;
       if (fType === 'multiple' && !isMultiple) return;
 
@@ -1703,8 +1704,27 @@
       state.selectedRowIndices = new Set(state.excelRows.map((_, i) => i));
     }
 
+    // Calculate ticket type counts for modal tabs
+    let singleCount = 0;
+    let multipleCount = 0;
+    const countsMap = buildPersonTicketCountsMap();
+    const nameHeader = state.excelHeaders.find(h => /ឈ្មោះ|name|owner|ម្ចាស់|គោត្តនាម|បេក្ខភាព/i.test(h)) || state.excelHeaders[1] || state.excelHeaders[0];
+    state.excelRows.forEach((row, i) => {
+      const rawName = normalizeName(row[nameHeader]);
+      const key = rawName ? rawName.toLowerCase() : `row_${i}`;
+      const totalT = countsMap.get(key) || getRecordTicketCount(row, state.excelHeaders);
+      if (totalT > 1) multipleCount++; else singleCount++;
+    });
+
     if (dom.modalCountAll) dom.modalCountAll.textContent = toKhmerDigits(state.excelRows.length);
     if (dom.sideCountAll) dom.sideCountAll.textContent = toKhmerDigits(state.excelRows.length);
+
+    const elSel = document.getElementById('modalCountSelected');
+    if (elSel) elSel.textContent = toKhmerDigits(state.selectedRowIndices ? state.selectedRowIndices.size : state.excelRows.length);
+    const elSin = document.getElementById('modalCountSingle');
+    if (elSin) elSin.textContent = toKhmerDigits(singleCount);
+    const elMul = document.getElementById('modalCountMultiple');
+    if (elMul) elMul.textContent = toKhmerDigits(multipleCount);
 
     // Update selected count badge in toolbar
     const selectedBadge = document.getElementById('selectedCountBadge');
@@ -1719,15 +1739,17 @@
     }
 
     const query = (state.modalSearchQuery || '').toLowerCase().trim();
+    const tabFilter = state.modalTabFilter || 'all';
 
-    // Filter rows for modal view based on search
+    // Filter rows for modal view based on search and tab filter
+    const filteredByTab = getFilteredRecords(tabFilter);
     const visibleRows = [];
-    state.excelRows.forEach((row, i) => {
+    filteredByTab.forEach(item => {
       if (query) {
-        const rowText = Object.values(row).join(' ').toLowerCase();
+        const rowText = Object.values(item.row).join(' ').toLowerCase();
         if (!rowText.includes(query)) return;
       }
-      visibleRows.push({ row, originalIndex: i });
+      visibleRows.push(item);
     });
 
     if (!visibleRows.length) {
