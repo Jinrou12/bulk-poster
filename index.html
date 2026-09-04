@@ -427,9 +427,21 @@
         <span>Sample</span>
       </button>
 
+      <!-- Filename Naming Customization Dropdown -->
+      <div class="footer-naming-select-wrap" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);padding:4px 10px;border-radius:var(--r-md);" title="ទម្រង់ឈ្មោះរូបភាព Download (Filename Format)">
+        <i data-lucide="file-text" style="width:14px;height:14px;color:var(--gold);"></i>
+        <span style="font-size:0.73rem;color:var(--text-muted);font-weight:500;">ឈ្មោះ៖</span>
+        <select id="exportFilenamePresetFooter" style="font-size:0.75rem;border:none;background:transparent;color:var(--text);font-weight:600;cursor:pointer;outline:none;">
+          <option value="name_only">👤 ឈ្មោះតែម្តង (Name Only)</option>
+          <option value="index_name" selected>🔢 លេខរៀង + ឈ្មោះ</option>
+          <option value="name_ticket">🎟️ ឈ្មោះ + សំបុត្រ</option>
+          <option value="custom">✏️ Custom Pattern...</option>
+        </select>
+      </div>
+
       <button class="btn btn-primary" id="btnBatchExport">
         <i data-lucide="download-cloud"></i>
-        <span>Export ZIP</span>
+        <span>Export Posters</span>
       </button>
     </div>
   </footer>
@@ -466,7 +478,7 @@
           <i data-lucide="search"></i>
           <input type="text" id="modalSearchInput" placeholder="Search by name, ticket number..." />
         </div>
-        <div class="selection-tools" style="display:flex;align-items:center;gap:12px;width:100%;margin-top:8px;padding:8px 12px;background:var(--surface-2);border-radius:var(--r-md);border:1px solid var(--border);">
+        <div class="selection-tools" style="display:flex;align-items:center;gap:12px;width:100%;margin-top:8px;padding:8px 12px;background:var(--surface-2);border-radius:var(--r-md);border:1px solid var(--border);flex-wrap:wrap;">
           <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;font-size:0.78rem;">
             <input type="checkbox" id="modalMasterSelectAll" checked style="accent-color:var(--gold);width:15px;height:15px;">
             <span>ជ្រើសរើសទាំងអស់ (Select All)</span>
@@ -478,6 +490,18 @@
           </div>
           <span id="selectedCountBadge" class="badge badge-single" style="font-size:0.72rem;padding:3px 8px;">ជ្រើសរើស 0 / 0</span>
         </div>
+
+        <!-- Custom Filename Option Bar inside Data Modal -->
+        <div class="naming-options-bar" style="display:flex;align-items:center;gap:10px;margin-top:8px;padding:8px 12px;background:var(--surface-2);border-radius:var(--r-md);border:1px solid var(--border);font-size:0.78rem;width:100%;">
+          <span style="font-weight:600;color:var(--text);display:flex;align-items:center;gap:6px;"><i data-lucide="file-text" style="width:14px;height:14px;color:var(--gold);"></i> ឈ្មោះរូបភាព Download (Filename):</span>
+          <select id="exportFilenamePreset" style="padding:4px 8px;font-size:0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--charcoal);font-weight:500;">
+            <option value="name_only">👤 ឈ្មោះតែម្តង (ឧ. សុខ_សាន្ត.png)</option>
+            <option value="index_name" selected>🔢 លេខរៀង + ឈ្មោះ (ឧ. poster_001_សុខ_សាន្ត.png)</option>
+            <option value="name_ticket">🎟️ ឈ្មោះ + សំបុត្រ (ឧ. សុខ_សាន្ត_T001.png)</option>
+            <option value="custom">✏️ Custom Pattern</option>
+          </select>
+          <input type="text" id="exportFilenameCustomPattern" placeholder="ឧ. poster_{{ Index }}_{{ Name }}" style="display:none;padding:4px 8px;font-size:0.75rem;border:1px solid var(--border);border-radius:6px;width:220px;background:var(--surface);color:var(--charcoal);" value="poster_{{ Index }}_{{ Name }}">
+        </div>
       </div>
       <div id="excelTableContainer" class="table-responsive">
         <p class="empty-hint" style="text-align:center;padding:32px;">No Excel data uploaded yet.</p>
@@ -485,7 +509,7 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-primary" id="btnExportFilteredZip">
-        <i data-lucide="download-cloud"></i> Export Filtered Posters (ZIP)
+        <i data-lucide="download-cloud"></i> Export Filtered Posters
       </button>
       <button class="btn btn-secondary" id="btnCloseDataModal2">Close</button>
     </div>

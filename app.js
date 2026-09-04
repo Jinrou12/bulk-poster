@@ -33,6 +33,9 @@
 
     cancelExport: false,
 
+    exportFilenamePreset: 'index_name', // 'name_only' | 'index_name' | 'name_ticket' | 'custom'
+    exportFilenameCustomPattern: 'poster_{{ Index }}_{{ Name }}',
+
     dragState: {
       isDragging: false,
       isResizing: false,
@@ -267,6 +270,47 @@
       });
     });
 
+    // Filename Customization Dropdowns & Custom Pattern Input
+    const selectModal = document.getElementById('exportFilenamePreset');
+    const selectFooter = document.getElementById('exportFilenamePresetFooter');
+    const inputCustom = document.getElementById('exportFilenameCustomPattern');
+
+    function syncFilenamePresetUI() {
+      if (selectModal) selectModal.value = state.exportFilenamePreset;
+      if (selectFooter) selectFooter.value = state.exportFilenamePreset;
+      if (inputCustom) {
+        if (state.exportFilenamePreset === 'custom') {
+          inputCustom.style.display = 'inline-block';
+          inputCustom.value = state.exportFilenameCustomPattern;
+        } else {
+          inputCustom.style.display = 'none';
+        }
+      }
+    }
+
+    if (selectModal) {
+      selectModal.addEventListener('change', e => {
+        state.exportFilenamePreset = e.target.value;
+        syncFilenamePresetUI();
+        scheduleSaveState();
+      });
+    }
+
+    if (selectFooter) {
+      selectFooter.addEventListener('change', e => {
+        state.exportFilenamePreset = e.target.value;
+        syncFilenamePresetUI();
+        scheduleSaveState();
+      });
+    }
+
+    if (inputCustom) {
+      inputCustom.addEventListener('input', e => {
+        state.exportFilenameCustomPattern = e.target.value;
+        scheduleSaveState();
+      });
+    }
+
     // Click on canvas viewport (deselect when clicking empty space)
     dom.canvasViewport.addEventListener('mousedown', e => {
       if (e.target === dom.canvasViewport || e.target === dom.canvasWrapper || e.target === dom.canvas) {
@@ -387,6 +431,8 @@
           excelRows: state.excelRows,
           ticketFilter: state.ticketFilter,
           currentRecordIndex: state.currentRecordIndex,
+          exportFilenamePreset: state.exportFilenamePreset,
+          exportFilenameCustomPattern: state.exportFilenameCustomPattern,
           timestamp: Date.now()
         };
         await saveStateToDB(dataToSave);
@@ -408,6 +454,8 @@
         state.excelRows = saved.excelRows || [];
         state.ticketFilter = saved.ticketFilter || 'all';
         state.currentRecordIndex = saved.currentRecordIndex || 0;
+        state.exportFilenamePreset = saved.exportFilenamePreset || 'index_name';
+        state.exportFilenameCustomPattern = saved.exportFilenameCustomPattern || 'poster_{{ Index }}_{{ Name }}';
 
         resizeCanvas(state.templateWidth, state.templateHeight);
 
@@ -447,6 +495,7 @@
     updateRecordDropdown();
     renderExcelTableModal();
     renderLayersList();
+    if (typeof syncFilenamePresetUI === 'function') syncFilenamePresetUI();
     renderCanvas();
     fitZoomToScreen();
   }
@@ -1894,11 +1943,67 @@
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Batch Export → ZIP (Option to export all or filtered/selected rows)
+  // Custom Filename Generator
+  // Presets: 'name_only' | 'index_name' | 'name_ticket' | 'custom'
+  // ──────────────────────────────────────────────────────────────────────────
+  function generateExportFilename(row, index, headers) {
+    const currentHeaders = headers || state.excelHeaders;
+    const nameHeader = currentHeaders.find(h => /ឈ្មោះ|name|owner|ម្ចាស់|គោត្តនាម|បេក្ខភាព/i.test(h)) || currentHeaders[0];
+    const ticketHeader = currentHeaders.find(h => /លេខ|ឆ្នោត|ស្លាក|រៀង|no|number|code|id/i.test(h));
+
+    const rawName = String((row && row[nameHeader]) || (row && Object.values(row)[0]) || `poster_${index + 1}`).trim();
+    const safeName = rawName.replace(/[\\/:*?"<>|]/g, '_');
+
+    const rawTicket = ticketHeader && row ? String(row[ticketHeader] || '').trim() : '';
+    const safeTicket = rawTicket.replace(/[\\/:*?"<>|]/g, '_');
+
+    const paddedIndex = String(index + 1).padStart(3, '0');
+    const preset = state.exportFilenamePreset || 'index_name';
+
+    let filename = '';
+
+    if (preset === 'name_only') {
+      filename = safeName || `poster_${paddedIndex}`;
+    } else if (preset === 'name_ticket') {
+      filename = safeTicket ? `${safeName}_${safeTicket}` : safeName;
+    } else if (preset === 'custom') {
+      let pattern = state.exportFilenameCustomPattern || 'poster_{{ Index }}_{{ Name }}';
+      pattern = pattern.replace(/\{\{\s*Index\s*\}\}/gi, paddedIndex);
+      pattern = pattern.replace(/\{\{\s*Name\s*\}\}/gi, safeName);
+      pattern = pattern.replace(/\{\{\s*Ticket\s*\}\}/gi, safeTicket);
+      // Replace any other merge fields {{ Header }}
+      pattern = pattern.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, col) => {
+        const val = row ? row[col.trim()] : undefined;
+        return val !== undefined ? String(val).replace(/[\\/:*?"<>|]/g, '_') : '';
+      });
+      filename = pattern.trim().replace(/[\\/:*?"<>|]/g, '_') || `poster_${paddedIndex}`;
+    } else {
+      // Default 'index_name'
+      filename = `poster_${paddedIndex}_${safeName}`;
+    }
+
+    if (!filename.toLowerCase().endsWith('.png')) {
+      filename += '.png';
+    }
+    return filename;
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Batch Export → Images or ZIP
+  // Logic: <= 10 items -> Download direct images (.png)
+  //        > 10 items -> Package into a ZIP file (.zip)
   // ──────────────────────────────────────────────────────────────────────────
   async function handleBatchExport(filteredOnly = false) {
     if (!state.excelRows.length) {
-      alert('Upload ឯកសារ Excel ជាមុនសិន!');
+      // If no Excel data, export current canvas view as single image
+      const off = document.createElement('canvas');
+      off.width = state.templateWidth;
+      off.height = state.templateHeight;
+      const offCtx = off.getContext('2d');
+      renderCanvas(offCtx, null);
+
+      const blob = await new Promise(res => off.toBlob(res, 'image/png', 0.95));
+      saveAs(blob, 'poster_template.png');
       return;
     }
 
@@ -1944,39 +2049,71 @@
       return;
     }
 
+    const total = exportTargetRows.length;
+    const isZip = total > 10;
+
     state.cancelExport = false;
     dom.exportModal.classList.remove('hidden');
     dom.exportProgressBar.style.width = '0%';
 
-    const zip     = new JSZip();
-    const off     = document.createElement('canvas');
-    off.width     = state.templateWidth;
-    off.height    = state.templateHeight;
-    const offCtx  = off.getContext('2d');
-    const total   = exportTargetRows.length;
-
-    for (let i = 0; i < total; i++) {
-      if (state.cancelExport) break;
-
-      const row = exportTargetRows[i];
-      renderCanvas(offCtx, row);
-
-      const blob = await new Promise(res => off.toBlob(res, 'image/png', 0.95));
-      const nameHeader = state.excelHeaders.find(h => /ឈ្មោះ|name|owner|ម្ចាស់/i.test(h)) || state.excelHeaders[0];
-      const name = String(row[nameHeader] || Object.values(row)[0] || `poster_${i + 1}`).replace(/[\\/:*?"<>|]/g, '_');
-      zip.file(`poster_${String(i + 1).padStart(3, '0')}_${name}.png`, blob);
-
-      const pct = Math.round(((i + 1) / total) * 100);
-      dom.exportProgressBar.style.width  = pct + '%';
-      dom.exportStatusText.textContent   = `Export ${i + 1} / ${total} (${name}) ...`;
-
-      await new Promise(r => setTimeout(r, 10));
+    const modalTitle = dom.exportModal.querySelector('.modal-header h2');
+    if (modalTitle) {
+      modalTitle.innerHTML = isZip
+        ? `<i data-lucide="package-check"></i> Packaging ${total} Posters (ZIP)…`
+        : `<i data-lucide="download"></i> Downloading ${total} Poster Images…`;
+      if (window.lucide) lucide.createIcons();
     }
 
-    if (!state.cancelExport) {
-      dom.exportStatusText.textContent = 'Compressing ZIP...';
-      const content = await zip.generateAsync({ type: 'blob' });
-      saveAs(content, zipFilename);
+    const off = document.createElement('canvas');
+    off.width = state.templateWidth;
+    off.height = state.templateHeight;
+    const offCtx = off.getContext('2d');
+
+    if (isZip) {
+      // > 10 items: Export as ZIP archive
+      const zip = new JSZip();
+
+      for (let i = 0; i < total; i++) {
+        if (state.cancelExport) break;
+
+        const row = exportTargetRows[i];
+        renderCanvas(offCtx, row);
+
+        const blob = await new Promise(res => off.toBlob(res, 'image/png', 0.95));
+        const filename = generateExportFilename(row, i, state.excelHeaders);
+        zip.file(filename, blob);
+
+        const pct = Math.round(((i + 1) / total) * 100);
+        dom.exportProgressBar.style.width = pct + '%';
+        dom.exportStatusText.textContent = `Preparing poster ${i + 1} / ${total} (${filename}) ...`;
+
+        await new Promise(r => setTimeout(r, 10));
+      }
+
+      if (!state.cancelExport) {
+        dom.exportStatusText.textContent = 'Compressing ZIP file...';
+        const content = await zip.generateAsync({ type: 'blob' });
+        saveAs(content, zipFilename);
+      }
+    } else {
+      // <= 10 items: Download directly as individual image files
+      for (let i = 0; i < total; i++) {
+        if (state.cancelExport) break;
+
+        const row = exportTargetRows[i];
+        renderCanvas(offCtx, row);
+
+        const blob = await new Promise(res => off.toBlob(res, 'image/png', 0.95));
+        const filename = generateExportFilename(row, i, state.excelHeaders);
+
+        saveAs(blob, filename);
+
+        const pct = Math.round(((i + 1) / total) * 100);
+        dom.exportProgressBar.style.width = pct + '%';
+        dom.exportStatusText.textContent = `Downloading image ${i + 1} / ${total} (${filename}) ...`;
+
+        await new Promise(r => setTimeout(r, 150));
+      }
     }
 
     dom.exportModal.classList.add('hidden');
